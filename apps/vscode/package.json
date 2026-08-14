@@ -1,0 +1,135 @@
+{
+  "name": "codehub",
+  "displayName": "CodeHub",
+  "description": "One Agent. Every Model. — Open-source multi-model AI coding agent",
+  "version": "0.1.0",
+  "publisher": "codehub",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "coding",
+    "agent",
+    "deepseek",
+    "qwen",
+    "multi-model"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codehub",
+          "title": "CodeHub",
+          "icon": "media/codehub.svg"
+        }
+      ]
+    },
+    "views": {
+      "codehub": [
+        {
+          "type": "webview",
+          "id": "codehub.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codehub.openChat",
+        "title": "CodeHub: Open Chat"
+      },
+      {
+        "command": "codehub.startServer",
+        "title": "CodeHub: Start Local Agent Server"
+      },
+      {
+        "command": "codehub.stopServer",
+        "title": "CodeHub: Stop Local Agent Server"
+      },
+      {
+        "command": "codehub.showDiff",
+        "title": "CodeHub: Show File Diff"
+      },
+      {
+        "command": "codehub.askSelection",
+        "title": "CodeHub: Ask about Selection"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codehub.askSelection",
+          "group": "codehub",
+          "when": "editorHasSelection"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CodeHub",
+      "properties": {
+        "codehub.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8765",
+          "description": "Local CodeHub agent server URL"
+        },
+        "codehub.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Python executable used to start the local server (empty = auto-detect)"
+        },
+        "codehub.autoStartServer": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically start the local agent server when the extension activates"
+        },
+        "codehub.maxSteps": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 40,
+          "description": "Maximum agent tool-loop steps per task"
+        },
+        "codehub.deepseekApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "DeepSeek API key (BYOK). Prefer env / .env when possible."
+        },
+        "codehub.qwenApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Qwen / DashScope API key"
+        },
+        "codehub.glmApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "GLM / Zhipu API key"
+        },
+        "codehub.kimiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Kimi / Moonshot API key"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "tsc --noEmit -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}

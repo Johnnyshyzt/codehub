@@ -1,0 +1,198 @@
+"""
+Agent Runtime with multi-step tool calling loop.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from typing import Any, Optional, Union
+
+from core.router.router import RouteDecision, SmartRouter
+from core.tools.registry import ToolRegistry
+from providers.base import ChatCompletionRequest, ChatMessage
+
+EventCallback = Callable[[str, dict[str, Any]], Union[Awaitable[None], None]]
+
+DEFAULT_SYSTEM_PROMPT = """You are CodeHub, an open-source AI coding agent.
+You help developers complete real coding tasks by reading and editing files
+and running commands inside their workspace.
+
+Rules:
+- Prefer using tools over guessing file contents.
+- Start with workspace context, then grep/search_files/read_file before editing.
+- Keep changes minimal and correct.
+- After editing code, run relevant tests or checks when practical.
+- When finished, give a short summary of what you changed.
+- Paths are relative to the workspace root.
+"""
+
+
+@dataclass
+class AgentResult:
+    content: str
+    provider: str
+    model: str
+    steps: int
+    tool_calls: int = 0
+    usage_total_tokens: int = 0
+    events: list[dict[str, Any]] = field(default_factory=list)
+    file_changes: list[dict[str, Any]] = field(default_factory=list)
+
+
+class AgentRuntime:
+    def __init__(
+        self,
+        router: SmartRouter,
+        tools: Optional[ToolRegistry] = None,
+        *,
+        max_steps: int = 12,
+        on_event: Optional[EventCallback] = None,
+    ):
+        self.router = router
+        self.tools = tools
+        self.max_steps = max_steps
+        self.on_event = on_event
+        self.history: list[ChatMessage] = []
+
+    def add_message(self, role: str, content: Optional[str], **kwargs: Any) -> None:
+        self.history.append(ChatMessage(role=role, content=content, **kwargs))
+
+    async def _emit(self, event_type: str, payload: dict[str, Any]) -> None:
+        if self.on_event:
+            result = self.on_event(event_type, payload)
+            if hasattr(result, "__await__"):
+                await result  # type: ignore[misc]
+
+    async def run(
+        self,
+        user_input: str,
+        task_type: str = "coding",
+        system_prompt: Optional[str] = None,
+        context_text: Optional[str] = None,
+    ) -> AgentResult:
+        """
+        Multi-step agent loop:
+        model -> optional tool calls -> tool results -> model ... until final answer.
+        """
+        self.history = [
+            ChatMessage(role="system", content=system_prompt or DEFAULT_SYSTEM_PROMPT)
+        ]
+        if context_text:
+            self.add_message(
+                "user",
+                (
+                    "Here is the current workspace context. "
+                    "Use it to orient yourself, then use tools for details.\n\n"
+                    f"{context_text}"
+                ),
+            )
+        self.add_message("user", user_input)
+        if self.tools:
+            self.tools.clear_changes()
+
+        events: list[dict[str, Any]] = []
+        tool_call_count = 0
+        usage_total = 0
+        steps_used = 0
+        last_decision: RouteDecision | None = None
+        final_content = ""
+
+        tools_payload = self.tools.openai_tools() if self.tools else None
+        require_tools = bool(tools_payload)
+
+        for step in range(1, self.max_steps + 1):
+            steps_used = step
+            request = ChatCompletionRequest(
+                messages=list(self.history),
+                temperature=0.2,
+                tools=tools_payload,
+                tool_choice="auto" if tools_payload else None,
+            )
+
+            decision, response = await self.router.chat_with_fallback(
+                request,
+                task_type=task_type,
+                require_tools=require_tools,
+            )
+            last_decision = decision
+
+            if response.usage:
+                usage_total += int(response.usage.get("total_tokens") or 0)
+
+            await self._emit(
+                "model_response",
+                {
+                    "step": step,
+                    "provider": decision.provider.name,
+                    "model": decision.model.id,
+                    "has_tool_calls": bool(response.tool_calls),
+                },
+            )
+            events.append(
+                {
+                    "type": "model_response",
+                    "step": step,
+                    "provider": decision.provider.name,
+                    "model": decision.model.id,
+                }
+            )
+
+            if response.tool_calls and self.tools:
+                self.add_message(
+                    "assistant",
+                    response.content,
+                    tool_calls=response.tool_calls,
+                )
+                results = await self.tools.execute_tool_calls(response.tool_calls)
+                tool_call_count += len(results)
+                for item in results:
+                    self.add_message(
+                        "tool",
+                        item["content"],
+                        tool_call_id=item["tool_call_id"],
+                        name=item["name"],
+                    )
+                    await self._emit(
+                        "tool_result",
+                        {
+                            "step": step,
+                            "tool": item["name"],
+                            "preview": item["content"][:300],
+                        },
+                    )
+                    events.append(
+                        {
+                            "type": "tool_result",
+                            "step": step,
+                            "tool": item["name"],
+                        }
+                    )
+                continue
+
+            final_content = response.content or ""
+            self.add_message("assistant", final_content)
+            break
+        else:
+            final_content = (
+                "Reached max agent steps without a final answer. "
+                "Partial work may already be applied via tools."
+            )
+
+        if last_decision is None:
+            raise RuntimeError("Agent did not receive any model response")
+
+        file_changes = self.tools.export_changes() if self.tools else []
+        return AgentResult(
+            content=final_content,
+            provider=last_decision.provider.name,
+            model=last_decision.model.id,
+            steps=steps_used,
+            tool_calls=tool_call_count,
+            usage_total_tokens=usage_total,
+            events=events,
+            file_changes=file_changes,
+        )
+
+    def reset(self) -> None:
+        self.history.clear()

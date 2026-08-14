@@ -1,0 +1,88 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codehub"
+version = "0.1.0"
+description = "Open-source AI Coding Agent Platform — One Agent. Every Model."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "CodeHub Contributors"}
+]
+keywords = [
+    "ai",
+    "coding-agent",
+    "llm",
+    "multi-model",
+    "smart-router",
+    "open-source",
+    "vscode",
+    "agent"
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "pydantic>=2.0",
+    "httpx>=0.27",
+    "openai>=1.40",
+    "python-dotenv>=1.0",
+    "rich>=13.0",
+    "typer>=0.12",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sse-starlette>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/codehub"
+Repository = "https://github.com/your-username/codehub"
+Issues = "https://github.com/your-username/codehub/issues"
+
+[project.scripts]
+codehub = "codehub.cli:app"
+codehub-server = "codehub.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["codehub*", "core*", "providers*", "storage*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+    "UP006",  # Keep typing.List/Dict for Pydantic on 3.9
+    "UP007",  # Keep typing.Union for Pydantic on 3.9
+    "UP035",  # Keep typing.List/Dict imports on 3.9
+    "UP045",  # Optional[X] kept for Python 3.9 / Pydantic compatibility
+    "B008",   # Typer Argument/Option defaults are intentional
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
