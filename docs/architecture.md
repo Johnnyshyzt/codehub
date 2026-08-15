@@ -60,6 +60,6 @@ Developer (CLI / VS Code)
 
 ## Next Steps
 
-1. Expand bench corpus / multi-provider live matrix
+1. Multi-provider live bench matrix / CI job
 2. Publish extension to VS Marketplace / Open VSX
 3. Optional: keep MCP pools warm across HTTP requests (not only within a run)

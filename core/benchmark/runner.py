@@ -127,6 +127,7 @@ async def run_benchmark(
     *,
     mock: bool = True,
     tasks: Optional[list[BenchTask]] = None,
+    only: Optional[list[str]] = None,
     score_store: Optional[ModelScoreStore] = None,
     update_scores: bool = True,
     max_steps: int = 10,
@@ -137,7 +138,12 @@ async def run_benchmark(
     mock=True uses scripted MockProvider (CI / offline).
     mock=False uses configured live providers (needs API keys).
     """
-    selected = tasks or default_tasks()
+    if tasks is not None:
+        selected = tasks
+    else:
+        selected = default_tasks(only=only)
+    if not selected:
+        raise ValueError("No benchmark tasks selected")
     results: list[TaskResult] = []
     for task in selected:
         results.append(await _run_one(task, mock=mock, max_steps=max_steps))

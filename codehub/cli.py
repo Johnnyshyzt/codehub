@@ -127,23 +127,44 @@ def bench_cmd(
         help="Write outcomes into local model_scores.json (live mode).",
     ),
     max_steps: int = typer.Option(10, "--max-steps"),
+    only: Optional[str] = typer.Option(
+        None,
+        "--only",
+        help="Comma-separated task ids (see --list).",
+    ),
+    list_tasks: bool = typer.Option(
+        False,
+        "--list",
+        help="List built-in task ids and exit.",
+    ),
 ) -> None:
     """Run the built-in coding benchmark suite."""
     from core.benchmark import run_benchmark
+    from core.benchmark.tasks import default_tasks
+
+    if list_tasks:
+        for task in default_tasks():
+            tags = f" ({', '.join(task.tags)})" if task.tags else ""
+            console.print(f"  {task.id}: {task.title}{tags}")
+        raise typer.Exit(code=0)
+
+    only_ids = [p.strip() for p in only.split(",")] if only else None
 
     async def _run():
         return await run_benchmark(
             mock=not live,
+            only=only_ids,
             update_scores=update_scores and live,
             max_steps=max_steps,
         )
 
     console.print(
         f"[bold]CodeHub bench[/bold] mode={'live' if live else 'mock/offline'}"
+        + (f" only={','.join(only_ids)}" if only_ids else "")
     )
     try:
         report = asyncio.run(_run())
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
 

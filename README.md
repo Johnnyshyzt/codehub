@@ -25,7 +25,7 @@
 - [x] Quota 本地用量（`~/.codehub/usage.json` + `codehub usage` + `/v1/usage`）
 - [x] MCP（选择性：`.codehub/mcp.json` + 会话复用 + `codehub mcp` + `pip install 'codehub[mcp]'`）
 - [x] Model Score / Benchmark 权重（本地 `model_scores.json` + `codehub scores`）
-- [x] 离线评测套件（`codehub bench` / `codehub bench --live`）
+- [x] 离线评测套件（`codehub bench` / `--only` / `--list` / `--live`，8 任务）
 - [x] VSIX 打包 / 安装文档（`apps/vscode` → `npm run package`）
 
 ---
@@ -50,7 +50,9 @@ cp .env.example .env
 codehub models
 codehub usage
 codehub scores
-codehub bench          # offline mock suite
+codehub bench          # offline mock suite (8 tasks)
+codehub bench --list
+codehub bench --only write_hello,fix_mul_bug
 # codehub bench --live # needs API keys; updates model_scores
 
 # 在当前目录跑一个 coding 任务
