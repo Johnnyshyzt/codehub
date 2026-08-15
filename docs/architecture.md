@@ -1,4 +1,4 @@
-# CodeHub Architecture (V0.1)
+# CodeHub Architecture (V0.2)
 
 ## High-level Goal
 
@@ -28,6 +28,8 @@ Developer (CLI / VS Code)
         ↓
    Tools (workspace sandbox)
         ├── list_dir / read_file / write_file
+        ├── grep / search_files
+        ├── git_status / git_diff / git_log / git_commit
         └── run_terminal
 ```
 
@@ -37,21 +39,22 @@ Developer (CLI / VS Code)
 2. **Local-first** — Tools are confined to a workspace root; no full-repo upload service in V0.1.
 3. **BYOK** — API keys come from environment / `.env`.
 4. **Progressive enhancement** — Rule-based router now; score/benchmark-driven router later.
+5. **Git safety** — commit requires `confirm=true`; no amend / push / hook-skip from the tool.
+6. **Streaming** — Router streams completions, Agent emits `token` SSE events for the UI.
 
 ## Module Map
 
 | Path | Responsibility |
 |------|----------------|
 | `core/context/` | Shallow file tree + editor hints |
-| `core/tools/` | Sandboxed filesystem, terminal, grep/search |
+| `core/tools/` | Sandboxed filesystem, terminal, grep/search, git |
 | `codehub/cli.py` | `codehub ask` / `codehub models` / `codehub serve` |
-| `codehub/server.py` | Local HTTP + SSE for VS Code |
-| `apps/vscode/` | Chat sidebar + Diff + context payload |
+| `codehub/server.py` | Local HTTP + SSE (`token` / tool / done) for VS Code |
+| `apps/vscode/` | Chat sidebar + Diff + Keep/Revert + streaming |
 
 ## Next Steps
 
-1. Keep daily-driving the VS Code extension and fix friction
-2. MCP (selective)
-3. Git tools (diff / commit)
-4. Quota / usage telemetry (local)
-5. Benchmark-informed router weights
+1. MCP (selective)
+2. Quota / usage telemetry (local)
+3. Benchmark-informed router weights
+4. Stronger streaming UX (cancel mid-run)

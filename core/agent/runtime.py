@@ -21,6 +21,8 @@ and running commands inside their workspace.
 Rules:
 - Prefer using tools over guessing file contents.
 - Start with workspace context, then grep/search_files/read_file before editing.
+- Use git_status / git_diff / git_log to understand the repo state; do not invent git history.
+- Only use git_commit when the user clearly asks to commit; pass confirm=true and a clear message.
 - Keep changes minimal and correct.
 - After editing code, run relevant tests or checks when practical.
 - When finished, give a short summary of what you changed.
@@ -63,6 +65,13 @@ class AgentRuntime:
             result = self.on_event(event_type, payload)
             if hasattr(result, "__await__"):
                 await result  # type: ignore[misc]
+
+    def _make_token_emitter(self, step: int) -> Callable[[str], Any]:
+        async def _on_token(text: str) -> None:
+            if text:
+                await self._emit("token", {"step": step, "text": text})
+
+        return _on_token
 
     async def run(
         self,
@@ -114,6 +123,8 @@ class AgentRuntime:
                 request,
                 task_type=task_type,
                 require_tools=require_tools,
+                stream=True,
+                on_token=self._make_token_emitter(step),
             )
             last_decision = decision
 

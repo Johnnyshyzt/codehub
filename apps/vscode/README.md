@@ -35,7 +35,11 @@ Commands:
 - `CodeHub: Open Chat`
 - `CodeHub: Start Local Agent Server`
 - `CodeHub: Show File Diff`
+- `CodeHub: Keep All Changes`
+- `CodeHub: Revert All Changes`
 - `CodeHub: Ask about Selection`
+
+After the agent writes files, the Chat panel lists each change with **Diff / Keep / Revert** (plus Keep all / Revert all). Files are already on disk; **Revert** restores the previous contents (or deletes a newly created file).
 
 Settings (`codehub.*`):
 

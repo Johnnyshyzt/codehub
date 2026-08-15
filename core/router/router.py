@@ -6,8 +6,9 @@ V0.1: rule-based selection + retryable failure chain across providers.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional, Union
 
 from providers.base import (
     BaseProvider,
@@ -18,11 +19,52 @@ from providers.base import (
 )
 from providers.errors import AuthError, ProviderError
 
+TokenCallback = Callable[[str], Union[Awaitable[None], None]]
+
 
 @dataclass
 class RouteDecision:
     provider: BaseProvider
     model: ModelInfo
+
+
+def _merge_tool_call_delta(
+    bucket: dict[int, dict[str, Any]],
+    deltas: list[dict[str, Any]],
+) -> None:
+    # Non-streaming / mock shape: full tool_call objects without "index".
+    if deltas and all("index" not in d for d in deltas):
+        for i, tc in enumerate(deltas):
+            fn = tc.get("function") or {}
+            bucket[i] = {
+                "id": tc.get("id") or f"call_{i}",
+                "type": tc.get("type") or "function",
+                "function": {
+                    "name": fn.get("name") or "",
+                    "arguments": fn.get("arguments") or "{}",
+                },
+            }
+        return
+
+    for delta in deltas:
+        idx = int(delta.get("index", 0))
+        entry = bucket.setdefault(
+            idx,
+            {
+                "id": "",
+                "type": "function",
+                "function": {"name": "", "arguments": ""},
+            },
+        )
+        if delta.get("id"):
+            entry["id"] = delta["id"]
+        fn = delta.get("function") or {}
+        if fn.get("name"):
+            entry["function"]["name"] = (entry["function"].get("name") or "") + fn["name"]
+        if "arguments" in fn and fn["arguments"] is not None:
+            entry["function"]["arguments"] = (
+                entry["function"].get("arguments") or ""
+            ) + fn["arguments"]
 
 
 class SmartRouter:
@@ -142,11 +184,17 @@ class SmartRouter:
         task_type: str = "general",
         require_tools: bool = False,
         max_attempts: int = 4,
+        on_token: Optional[TokenCallback] = None,
+        stream: bool = False,
     ) -> tuple[RouteDecision, ChatCompletionResponse]:
         """
         Try providers in ranked order. On retryable errors (429/5xx/timeout),
         automatically switch to the next provider.
+
+        When stream=True (or on_token is set), use streaming completions and
+        accumulate into a full response while forwarding content tokens.
         """
+        use_stream = stream or on_token is not None
         decisions = await self.candidates(task_type=task_type, require_tools=require_tools)
         if not decisions:
             raise RuntimeError("No available models from any provider")
@@ -155,7 +203,12 @@ class SmartRouter:
         for decision in decisions[:max_attempts]:
             attempt = request.model_copy(update={"model": decision.model.id})
             try:
-                response = await decision.provider.chat_completion(attempt)
+                if use_stream:
+                    response = await self._stream_to_response(
+                        decision.provider, attempt, on_token=on_token
+                    )
+                else:
+                    response = await decision.provider.chat_completion(attempt)
                 return decision, response
             except AuthError as exc:
                 # Bad key for this provider — skip, try others.
@@ -168,6 +221,44 @@ class SmartRouter:
                 raise
         detail = "; ".join(errors) if errors else "unknown"
         raise RuntimeError(f"All providers failed. Last errors: {detail}")
+
+    async def _stream_to_response(
+        self,
+        provider: BaseProvider,
+        request: ChatCompletionRequest,
+        *,
+        on_token: Optional[TokenCallback] = None,
+    ) -> ChatCompletionResponse:
+        content_parts: list[str] = []
+        tool_buckets: dict[int, dict[str, Any]] = {}
+        finish_reason: str | None = None
+        usage: dict[str, int] | None = None
+
+        async for chunk in provider.chat_completion_stream(request):
+            if chunk.content:
+                content_parts.append(chunk.content)
+                if on_token:
+                    result = on_token(chunk.content)
+                    if hasattr(result, "__await__"):
+                        await result  # type: ignore[misc]
+            if chunk.tool_calls:
+                _merge_tool_call_delta(tool_buckets, chunk.tool_calls)
+            if chunk.finish_reason:
+                finish_reason = chunk.finish_reason
+            if chunk.usage:
+                usage = chunk.usage
+
+        tool_calls = None
+        if tool_buckets:
+            tool_calls = [tool_buckets[i] for i in sorted(tool_buckets)]
+
+        content = "".join(content_parts) if content_parts else None
+        return ChatCompletionResponse(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason=finish_reason,
+            usage=usage,
+        )
 
     def list_available_models(self) -> list[ModelInfo]:
         result: list[ModelInfo] = []

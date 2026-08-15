@@ -80,7 +80,12 @@ class MockProvider(BaseProvider):
         self, request: ChatCompletionRequest
     ) -> AsyncIterator[ChatCompletionChunk]:
         response = await self.chat_completion(request)
-        yield ChatCompletionChunk(content=response.content, finish_reason="stop")
+        yield ChatCompletionChunk(
+            content=response.content,
+            tool_calls=response.tool_calls,
+            finish_reason=response.finish_reason or "stop",
+            usage=response.usage,
+        )
 
 
 class FlakyThenOkProvider(MockProvider):

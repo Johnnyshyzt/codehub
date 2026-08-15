@@ -14,10 +14,16 @@ interface WebviewMessage {
   path?: string;
 }
 
+type ChangeDecision = "pending" | "kept" | "reverted";
+
+interface TrackedChange extends FileChange {
+  decision: ChangeDecision;
+}
+
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "codehub.chatView";
   private view?: vscode.WebviewView;
-  private lastChanges: FileChange[] = [];
+  private lastChanges: TrackedChange[] = [];
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -42,6 +48,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this.handlePrompt(msg.prompt.trim());
       } else if (msg.type === "showDiff" && msg.path) {
         await this.showDiff(msg.path);
+      } else if (msg.type === "keep" && msg.path) {
+        await this.keepChange(msg.path);
+      } else if (msg.type === "revert" && msg.path) {
+        await this.revertChange(msg.path);
+      } else if (msg.type === "keepAll") {
+        await this.keepAll();
+      } else if (msg.type === "revertAll") {
+        await this.revertAll();
       } else if (msg.type === "openSettings") {
         await vscode.commands.executeCommand(
           "workbench.action.openSettings",
@@ -60,7 +74,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await this.handlePrompt(prompt);
   }
 
-  getLastChanges(): FileChange[] {
+  getLastChanges(): TrackedChange[] {
     return this.lastChanges;
   }
 
@@ -75,7 +89,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     const before = change.before ?? "";
-    const after = change.after ?? "";
     const left = vscode.Uri.parse(
       `codehub-diff:before/${relativePath}?${encodeURIComponent(before)}`
     );
@@ -86,6 +99,89 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       right,
       `CodeHub: ${relativePath} (${change.action})`
     );
+  }
+
+  async keepChange(relativePath: string): Promise<void> {
+    const change = this.lastChanges.find((c) => c.path === relativePath);
+    if (!change) {
+      return;
+    }
+    if (change.decision === "reverted") {
+      vscode.window.showWarningMessage(`${relativePath} was already reverted.`);
+      return;
+    }
+    change.decision = "kept";
+    this.postChangeUpdate(change);
+  }
+
+  async revertChange(relativePath: string): Promise<void> {
+    const change = this.lastChanges.find((c) => c.path === relativePath);
+    if (!change) {
+      return;
+    }
+    if (change.decision === "reverted") {
+      return;
+    }
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      this.post({ type: "error", message: "Open a workspace folder first." });
+      return;
+    }
+
+    try {
+      const uri = vscode.Uri.joinPath(folder.uri, change.path);
+      if (change.action === "created" || change.before === null || change.before === undefined) {
+        try {
+          await vscode.workspace.fs.delete(uri, { useTrash: true });
+        } catch (err) {
+          // File may already be gone.
+          const message = err instanceof Error ? err.message : String(err);
+          if (!/EntryNotFound|FileNotFound|ENOENT/i.test(message)) {
+            throw err;
+          }
+        }
+      } else {
+        const encoder = new TextEncoder();
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(change.before));
+        try {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          await vscode.window.showTextDocument(doc, { preview: true, preserveFocus: true });
+        } catch {
+          /* ignore */
+        }
+      }
+      change.decision = "reverted";
+      this.postChangeUpdate(change);
+      vscode.window.showInformationMessage(`Reverted ${change.path}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.post({ type: "error", message: `Revert failed for ${relativePath}: ${message}` });
+    }
+  }
+
+  async keepAll(): Promise<void> {
+    for (const change of this.lastChanges) {
+      if (change.decision === "pending") {
+        change.decision = "kept";
+        this.postChangeUpdate(change);
+      }
+    }
+  }
+
+  async revertAll(): Promise<void> {
+    const pending = this.lastChanges.filter((c) => c.decision === "pending");
+    for (const change of pending) {
+      await this.revertChange(change.path);
+    }
+  }
+
+  private postChangeUpdate(change: TrackedChange): void {
+    this.post({
+      type: "changeUpdate",
+      path: change.path,
+      action: change.action,
+      decision: change.decision,
+    });
   }
 
   private async pushStatus(): Promise<void> {
@@ -116,7 +212,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         apiKeys: collectApiKeys(),
         context,
         onEvent: (type, payload) => {
-          if (type === "model_response") {
+          if (type === "token") {
+            this.post({
+              type: "token",
+              text: String(payload.text || ""),
+            });
+          } else if (type === "model_response") {
             this.post({
               type: "event",
               content: `→ ${payload.provider}/${payload.model} step=${payload.step}`,
@@ -130,15 +231,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         },
       });
 
-      this.lastChanges = result.file_changes || [];
+      this.lastChanges = (result.file_changes || []).map((c) => ({
+        ...c,
+        decision: "pending" as const,
+      }));
       this.post({
         type: "assistant",
         content: result.content,
         meta: `${result.provider}/${result.model} · steps=${result.steps} · tools=${result.tool_calls}`,
-        changes: this.lastChanges.map((c) => ({ path: c.path, action: c.action })),
+        changes: this.lastChanges.map((c) => ({
+          path: c.path,
+          action: c.action,
+          decision: c.decision,
+        })),
       });
 
-      // Refresh editors for written files.
+      // Refresh editors for written files (already applied on disk by the agent).
       for (const change of this.lastChanges) {
         const uri = vscode.Uri.joinPath(folder.uri, change.path);
         try {
@@ -279,6 +387,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     .bubble.user { border-left: 3px solid var(--accent); }
     .bubble.assistant { border-left: 3px solid #5b9cff; }
+    .bubble.streaming { border-left: 3px solid #5b9cff; border-style: dashed; }
     .bubble.event, .bubble.error {
       border-style: dashed;
       color: var(--muted);
@@ -286,16 +395,47 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     .bubble.error { color: #e36; border-color: #e36; }
     .meta { margin-top: 6px; font-size: 11px; color: var(--muted); }
-    .changes { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
-    .changes button {
-      text-align: left;
+    .changes { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .change-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 6px;
+    }
+    .change-row.kept { opacity: 0.75; border-color: var(--accent); }
+    .change-row.reverted { opacity: 0.55; text-decoration: line-through; }
+    .change-label {
+      flex: 1 1 120px;
+      font-size: 11px;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .change-row button, .bulk button {
       background: transparent;
       color: var(--fg);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 4px 8px;
+      padding: 3px 8px;
       cursor: pointer;
       font-size: 11px;
+    }
+    .change-row button.keep { border-color: var(--accent); color: var(--accent); }
+    .change-row button.revert { border-color: #e36; color: #e36; }
+    .change-row button:disabled { opacity: 0.4; cursor: default; }
+    .bulk {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .hint {
+      margin-top: 4px;
+      font-size: 10px;
+      color: var(--muted);
     }
     form {
       display: flex;
@@ -358,6 +498,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
     const statusEl = document.getElementById('status');
+    let streamBubble = null;
 
     function addBubble(cls, text, extra) {
       const div = document.createElement('div');
@@ -367,6 +508,72 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       log.appendChild(div);
       log.scrollTop = log.scrollHeight;
       return div;
+    }
+
+    function appendToken(text) {
+      if (!text) return;
+      if (!streamBubble) {
+        streamBubble = addBubble('streaming', '');
+      }
+      streamBubble.textContent = (streamBubble.textContent || '') + text;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function clearStreamBubble() {
+      if (streamBubble && streamBubble.parentNode) {
+        streamBubble.parentNode.removeChild(streamBubble);
+      }
+      streamBubble = null;
+    }
+
+    function renderChangeRow(c) {
+      const row = document.createElement('div');
+      row.className = 'change-row ' + (c.decision || 'pending');
+      row.dataset.path = c.path;
+
+      const label = document.createElement('span');
+      label.className = 'change-label';
+      label.textContent = c.action + ': ' + c.path;
+      row.appendChild(label);
+
+      const diffBtn = document.createElement('button');
+      diffBtn.type = 'button';
+      diffBtn.textContent = 'Diff';
+      diffBtn.addEventListener('click', () => vscode.postMessage({ type: 'showDiff', path: c.path }));
+      row.appendChild(diffBtn);
+
+      const keepBtn = document.createElement('button');
+      keepBtn.type = 'button';
+      keepBtn.className = 'keep';
+      keepBtn.textContent = 'Keep';
+      keepBtn.disabled = c.decision !== 'pending';
+      keepBtn.addEventListener('click', () => vscode.postMessage({ type: 'keep', path: c.path }));
+      row.appendChild(keepBtn);
+
+      const revertBtn = document.createElement('button');
+      revertBtn.type = 'button';
+      revertBtn.className = 'revert';
+      revertBtn.textContent = 'Revert';
+      revertBtn.disabled = c.decision !== 'pending';
+      revertBtn.addEventListener('click', () => vscode.postMessage({ type: 'revert', path: c.path }));
+      row.appendChild(revertBtn);
+
+      return row;
+    }
+
+    function applyDecisionToRow(row, decision) {
+      row.classList.remove('pending', 'kept', 'reverted');
+      row.classList.add(decision || 'pending');
+      row.querySelectorAll('button.keep, button.revert').forEach((b) => {
+        b.disabled = decision !== 'pending';
+      });
+      const label = row.querySelector('.change-label');
+      if (label && decision === 'kept' && !label.textContent.includes('✓')) {
+        label.textContent = label.textContent + ' ✓';
+      }
+      if (label && decision === 'reverted' && !label.textContent.includes('↩')) {
+        label.textContent = label.textContent.replace(/ ✓$/, '') + ' ↩';
+      }
     }
 
     form.addEventListener('submit', (e) => {
@@ -383,7 +590,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     window.addEventListener('message', (event) => {
       const msg = event.data;
       if (msg.type === 'user') addBubble('user', msg.content);
+      if (msg.type === 'token') appendToken(msg.text || '');
       if (msg.type === 'assistant') {
+        clearStreamBubble();
         const wrap = document.createElement('div');
         if (msg.meta) {
           const meta = document.createElement('div');
@@ -394,17 +603,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (msg.changes && msg.changes.length) {
           const box = document.createElement('div');
           box.className = 'changes';
-          msg.changes.forEach((c) => {
-            const b = document.createElement('button');
-            b.type = 'button';
-            b.textContent = c.action + ': ' + c.path + ' (diff)';
-            b.addEventListener('click', () => vscode.postMessage({ type: 'showDiff', path: c.path }));
-            box.appendChild(b);
-          });
+          const hint = document.createElement('div');
+          hint.className = 'hint';
+          hint.textContent = 'Files are already written. Keep to confirm, or Revert to undo.';
+          box.appendChild(hint);
+          msg.changes.forEach((c) => box.appendChild(renderChangeRow(c)));
+          const bulk = document.createElement('div');
+          bulk.className = 'bulk';
+          const keepAll = document.createElement('button');
+          keepAll.type = 'button';
+          keepAll.textContent = 'Keep all';
+          keepAll.addEventListener('click', () => vscode.postMessage({ type: 'keepAll' }));
+          const revertAll = document.createElement('button');
+          revertAll.type = 'button';
+          revertAll.textContent = 'Revert all';
+          revertAll.addEventListener('click', () => vscode.postMessage({ type: 'revertAll' }));
+          bulk.appendChild(keepAll);
+          bulk.appendChild(revertAll);
+          box.appendChild(bulk);
           wrap.appendChild(box);
         }
         const bubble = addBubble('assistant', msg.content);
         bubble.appendChild(wrap);
+      }
+      if (msg.type === 'changeUpdate') {
+        const rows = document.querySelectorAll('.change-row[data-path]');
+        rows.forEach((row) => {
+          if (row.dataset.path === msg.path) {
+            applyDecisionToRow(row, msg.decision);
+          }
+        });
       }
       if (msg.type === 'event') addBubble('event', msg.content);
       if (msg.type === 'error') addBubble('error', msg.message);
@@ -413,6 +641,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           sendBtn.disabled = true;
           statusEl.textContent = 'agent running…';
           statusEl.className = '';
+          clearStreamBubble();
         } else {
           sendBtn.disabled = false;
         }

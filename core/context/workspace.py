@@ -223,8 +223,9 @@ def build_context(
             hydrated_open.append(hint)
 
     notes = [
-        "Use grep/search_code to find symbols before editing unfamiliar files.",
+        "Use grep/search_files to find symbols before editing unfamiliar files.",
         "Prefer read_file for exact contents; the tree is shallow and may be incomplete.",
+        "Use git_status / git_diff / git_log for repository state — do not guess commits.",
     ]
     return ContextBundle(
         workspace_root=str(sandbox.root),

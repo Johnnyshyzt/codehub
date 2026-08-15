@@ -50,6 +50,30 @@ export function activate(context: vscode.ExtensionContext): void {
         await chat.showDiff(picked.label);
       }
     }),
+    vscode.commands.registerCommand("codehub.keepAllChanges", async () => {
+      const pending = chat.getLastChanges().filter((c) => c.decision === "pending");
+      if (!pending.length) {
+        vscode.window.showInformationMessage("No pending CodeHub changes to keep.");
+        return;
+      }
+      await chat.keepAll();
+      vscode.window.showInformationMessage(`Kept ${pending.length} CodeHub change(s).`);
+    }),
+    vscode.commands.registerCommand("codehub.revertAllChanges", async () => {
+      const pending = chat.getLastChanges().filter((c) => c.decision === "pending");
+      if (!pending.length) {
+        vscode.window.showInformationMessage("No pending CodeHub changes to revert.");
+        return;
+      }
+      const confirm = await vscode.window.showWarningMessage(
+        `Revert ${pending.length} CodeHub change(s)?`,
+        { modal: true },
+        "Revert"
+      );
+      if (confirm === "Revert") {
+        await chat.revertAll();
+      }
+    }),
     vscode.commands.registerCommand("codehub.askSelection", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor || editor.selection.isEmpty) {

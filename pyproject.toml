@@ -57,9 +57,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/codehub"
-Repository = "https://github.com/your-username/codehub"
-Issues = "https://github.com/your-username/codehub/issues"
+Homepage = "https://github.com/Johnnyshyzt/codehub"
+Repository = "https://github.com/Johnnyshyzt/codehub"
+Issues = "https://github.com/Johnnyshyzt/codehub/issues"
 
 [project.scripts]
 codehub = "codehub.cli:app"

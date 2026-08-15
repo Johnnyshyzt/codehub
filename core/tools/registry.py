@@ -10,6 +10,7 @@ from typing import Any, Union
 from providers.openai_compatible import parse_tool_arguments
 
 from .filesystem import WorkspaceSandbox, list_dir, read_file, write_file
+from .git import git_commit, git_diff, git_log, git_status
 from .search import grep_workspace, search_files
 from .terminal import run_terminal
 
@@ -175,6 +176,93 @@ class ToolRegistry:
                 handler=self._search_files,
             )
         )
+        self.register(
+            ToolSpec(
+                name="git_status",
+                description=(
+                    "Show git working-tree status (branch, staged, unstaged, untracked). "
+                    "Use before summarizing changes or deciding what to commit."
+                ),
+                parameters={"type": "object", "properties": {}, "required": []},
+                handler=self._git_status,
+            )
+        )
+        self.register(
+            ToolSpec(
+                name="git_diff",
+                description=(
+                    "Show git diff for unstaged (default) or staged changes. "
+                    "Optionally limit to a workspace-relative path."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Optional workspace-relative file or directory.",
+                        },
+                        "staged": {
+                            "type": "boolean",
+                            "description": "If true, show staged (--cached) diff. Default false.",
+                        },
+                    },
+                    "required": [],
+                },
+                handler=self._git_diff,
+            )
+        )
+        self.register(
+            ToolSpec(
+                name="git_log",
+                description="Show recent commits (oneline). Useful for style and recent context.",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "max_count": {
+                            "type": "integer",
+                            "description": "Number of commits (1-50). Default 10.",
+                        }
+                    },
+                    "required": [],
+                },
+                handler=self._git_log,
+            )
+        )
+        self.register(
+            ToolSpec(
+                name="git_commit",
+                description=(
+                    "Create a git commit. Only when the user clearly asks to commit. "
+                    "Requires confirm=true and a message. "
+                    "Optional paths= stages those files; "
+                    "otherwise stages tracked changes (git add -u). "
+                    "Does not push. Does not amend or skip hooks."
+                ),
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "message": {
+                            "type": "string",
+                            "description": "Commit message (required).",
+                        },
+                        "confirm": {
+                            "type": "boolean",
+                            "description": "Must be true to proceed.",
+                        },
+                        "paths": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Optional workspace-relative paths to stage. "
+                                "Omit to stage tracked modifications only."
+                            ),
+                        },
+                    },
+                    "required": ["message", "confirm"],
+                },
+                handler=self._git_commit,
+            )
+        )
 
     def register(self, spec: ToolSpec) -> None:
         self._tools[spec.name] = spec
@@ -276,6 +364,28 @@ class ToolRegistry:
 
     def _search_files(self, query: str, path: str = ".") -> str:
         return search_files(self.sandbox, query, path=path)
+
+    async def _git_status(self) -> str:
+        return await git_status(self.sandbox)
+
+    async def _git_diff(self, path: str | None = None, staged: bool = False) -> str:
+        return await git_diff(self.sandbox, path=path, staged=staged)
+
+    async def _git_log(self, max_count: int = 10) -> str:
+        return await git_log(self.sandbox, max_count=max_count)
+
+    async def _git_commit(
+        self,
+        message: str,
+        confirm: bool = False,
+        paths: list[str] | None = None,
+    ) -> str:
+        return await git_commit(
+            self.sandbox,
+            message=message,
+            confirm=confirm,
+            paths=paths,
+        )
 
     def describe(self) -> str:
         return json.dumps(

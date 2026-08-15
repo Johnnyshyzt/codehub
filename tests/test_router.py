@@ -51,3 +51,22 @@ async def test_all_providers_fail_raises() -> None:
         await router.chat_with_fallback(
             ChatCompletionRequest(messages=[ChatMessage(role="user", content="hi")])
         )
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_tokens() -> None:
+    tokens: list[str] = []
+
+    async def on_token(text: str) -> None:
+        tokens.append(text)
+
+    router = SmartRouter([MockProvider()])
+    decision, response = await router.chat_with_fallback(
+        ChatCompletionRequest(messages=[ChatMessage(role="user", content="hello")]),
+        stream=True,
+        on_token=on_token,
+    )
+    assert decision.provider.name == "mock"
+    assert response.content
+    assert tokens
+    assert "".join(tokens) == response.content

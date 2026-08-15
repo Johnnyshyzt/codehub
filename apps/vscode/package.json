@@ -60,6 +60,14 @@
         "title": "CodeHub: Show File Diff"
       },
       {
+        "command": "codehub.keepAllChanges",
+        "title": "CodeHub: Keep All Changes"
+      },
+      {
+        "command": "codehub.revertAllChanges",
+        "title": "CodeHub: Revert All Changes"
+      },
+      {
         "command": "codehub.askSelection",
         "title": "CodeHub: Ask about Selection"
       }

@@ -5,26 +5,24 @@
 > 让开发者不再需要选择 AI 模型。  
 > CodeHub 自动为当前任务选择最合适的模型，并在限流或失败时无缝切换。
 
-**仓库**
-
-- GitHub（国际）：https://github.com/Johnnyshyzt/codehub
-- Gitee（国内）：https://gitee.com/yztemes/codehub
+**仓库**：https://github.com/Johnnyshyzt/codehub
 
 ---
 
 ## 当前状态
 
-**Phase B+ / Context 初版**
+**Phase B+ / Git tools**
 
 - [x] OpenAI-compatible Provider（DeepSeek / Qwen / GLM / Kimi）
 - [x] Smart Router + 自动 Fallback（429 / 5xx / timeout）
 - [x] Agent Runtime（multi-step tool loop）
 - [x] Tools：`read_file` / `write_file` / `list_dir` / `run_terminal` / `grep` / `search_files`
+- [x] Git 工具：`git_status` / `git_diff` / `git_log` / `git_commit`（需 confirm）
 - [x] 最小 Context Engine（文件树 + 打开文件/选区）
 - [x] CLI：`codehub ask` / `codehub models` / `codehub serve`
-- [x] 本地 HTTP API（`/v1/run` + SSE stream）
-- [x] VS Code Extension（Chat 侧边栏 + Diff + Context）
-- [ ] MCP / Git 工具
+- [x] 本地 HTTP API（`/v1/run` + SSE stream + token 事件）
+- [x] VS Code Extension（Chat 侧边栏 + Diff + Context + Keep/Revert + 流式输出）
+- [ ] MCP
 - [ ] Quota Manager / Benchmark
 
 ---
@@ -32,12 +30,7 @@
 ## 快速开始
 
 ```bash
-# GitHub（国际）
 git clone https://github.com/Johnnyshyzt/codehub.git
-
-# Gitee（国内镜像，访问更快）
-# git clone https://gitee.com/yztemes/codehub.git
-
 cd codehub
 
 python -m venv .venv
@@ -120,7 +113,7 @@ codehub/
 
 **V0.1** — 能用：真实 Provider + Router/Fallback + Agent tools + CLI ✅  
 **V0.1b** — VS Code Extension + local API ✅  
-**V0.2** — Context Engine / grep / search ✅（最小版）→ 下一步 MCP / Git  
+**V0.2** — Context / grep / Git tools / Keep-Revert / token stream ✅ → 下一步 MCP / Quota  
 **V0.3** — Model Score / Benchmark / Quota  
 **V1.0** — Developer Platform  
 
