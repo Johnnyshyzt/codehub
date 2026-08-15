@@ -28,6 +28,7 @@
 - [x] 离线评测套件（`codehub bench` / `--only` / `--list` / `--live` / `--matrix`，8 任务）
 - [x] CI（GitHub Actions：pytest + ruff + mock bench + VSIX compile）
 - [x] VSIX 打包 / 安装文档（`apps/vscode` → `npm run package`）
+- [x] 版本对齐 0.3.0 + CHANGELOG + [发布清单](docs/release.md)（暂不 push / 不上架）
 
 ---
 
@@ -51,6 +52,7 @@ cp .env.example .env
 codehub models
 codehub usage
 codehub scores
+codehub version
 codehub bench          # offline mock suite (8 tasks)
 codehub bench --list
 codehub bench --only write_hello,fix_mul_bug

@@ -22,8 +22,54 @@ app = typer.Typer(
     name="codehub",
     help="CodeHub — One Agent. Every Model.",
     add_completion=False,
+    invoke_without_command=True,
 )
 console = Console()
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        from codehub import __version__
+
+        console.print(f"codehub {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-V",
+        help="Show version and exit.",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
+    """CodeHub — One Agent. Every Model."""
+    if ctx.invoked_subcommand is None:
+        from codehub import __version__
+
+        console.print(f"CodeHub — One Agent. Every Model. (v{__version__})")
+        console.print(
+            "Try: [bold]codehub models[/bold] | "
+            "[bold]codehub ask[/bold] | "
+            "[bold]codehub usage[/bold] | "
+            "[bold]codehub bench[/bold] | "
+            "[bold]codehub scores[/bold] | "
+            "[bold]codehub mcp[/bold] | "
+            "[bold]codehub serve[/bold] | "
+            "[bold]codehub version[/bold]"
+        )
+
+
+@app.command("version")
+def version_cmd() -> None:
+    """Print the installed CodeHub version."""
+    from codehub import __version__
+
+    console.print(f"codehub {__version__}")
 
 
 def _print_event(event_type: str, payload: dict) -> None:
@@ -401,21 +447,6 @@ def serve_cmd(
     os.environ["CODEHUB_PORT"] = str(port)
     console.print(f"[bold]CodeHub server[/bold] http://{host}:{port}")
     uvicorn.run("codehub.server:app", host=host, port=port, reload=False)
-
-
-@app.callback(invoke_without_command=True)
-def main(ctx: typer.Context) -> None:
-    if ctx.invoked_subcommand is None:
-        console.print("CodeHub — One Agent. Every Model.")
-        console.print(
-            "Try: [bold]codehub models[/bold] | "
-            "[bold]codehub ask[/bold] | "
-            "[bold]codehub usage[/bold] | "
-            "[bold]codehub bench[/bold] | "
-            "[bold]codehub scores[/bold] | "
-            "[bold]codehub mcp[/bold] | "
-            "[bold]codehub serve[/bold]"
-        )
 
 
 if __name__ == "__main__":

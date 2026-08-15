@@ -39,7 +39,7 @@ Developer (CLI / VS Code)
 1. **Model Neutral** — Agent never imports a concrete vendor SDK; everything goes through `BaseProvider` / `OpenAICompatibleProvider`.
 2. **Local-first** — Tools are confined to a workspace root; no full-repo upload service in V0.1.
 3. **BYOK** — API keys come from environment / `.env`.
-4. **Progressive enhancement** — Rule-based router now; score/benchmark-driven router later.
+4. **Progressive enhancement** — Rule-based router + local model scores / bench feedback.
 5. **Git safety** — commit requires `confirm=true`; no amend / push / hook-skip from the tool.
 6. **Streaming** — Router streams completions, Agent emits `token` SSE events for the UI.
 7. **Selective MCP** — Opt-in via `.codehub/mcp.json` + tool allow-list; SDK is an optional extra.
@@ -61,5 +61,5 @@ Developer (CLI / VS Code)
 
 ## Next Steps
 
-1. Finish remaining polish / docs, then publish (git push + VSIX Marketplace / Open VSX)
-2. Nightly live `--matrix` job (secrets for provider keys)
+1. When ready: follow [release checklist](release.md) (git push → CI → optional VSIX / Marketplace)
+2. Configure provider secrets to enable nightly live `--matrix`
