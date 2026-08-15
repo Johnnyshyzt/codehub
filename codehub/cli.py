@@ -121,6 +121,17 @@ def bench_cmd(
         "--live",
         help="Use configured live providers (needs API keys). Default is mock/offline.",
     ),
+    matrix: bool = typer.Option(
+        False,
+        "--matrix",
+        help="Run live bench once per configured provider (implies --live).",
+    ),
+    provider: Optional[str] = typer.Option(
+        None,
+        "--provider",
+        "-p",
+        help="Comma-separated provider names for live/matrix (e.g. deepseek,qwen).",
+    ),
     update_scores: bool = typer.Option(
         True,
         "--update-scores/--no-update-scores",
@@ -139,7 +150,7 @@ def bench_cmd(
     ),
 ) -> None:
     """Run the built-in coding benchmark suite."""
-    from core.benchmark import run_benchmark
+    from core.benchmark import run_benchmark, run_benchmark_matrix
     from core.benchmark.tasks import default_tasks
 
     if list_tasks:
@@ -149,21 +160,69 @@ def bench_cmd(
         raise typer.Exit(code=0)
 
     only_ids = [p.strip() for p in only.split(",")] if only else None
+    provider_ids = (
+        [p.strip() for p in provider.split(",") if p.strip()] if provider else None
+    )
+    use_live = live or matrix
+    if provider_ids and not use_live:
+        console.print("[red]--provider requires --live or --matrix[/red]")
+        raise typer.Exit(code=1)
 
-    async def _run():
+    async def _run_single():
         return await run_benchmark(
-            mock=not live,
+            mock=not use_live,
             only=only_ids,
-            update_scores=update_scores and live,
+            providers=provider_ids,
+            update_scores=update_scores and use_live,
             max_steps=max_steps,
         )
 
+    async def _run_matrix():
+        return await run_benchmark_matrix(
+            only=only_ids,
+            providers=provider_ids,
+            update_scores=update_scores,
+            max_steps=max_steps,
+        )
+
+    if matrix:
+        console.print(
+            "[bold]CodeHub bench matrix[/bold]"
+            + (f" only={','.join(only_ids)}" if only_ids else "")
+            + (f" providers={','.join(provider_ids)}" if provider_ids else " (all configured)")
+        )
+        try:
+            matrix_report = asyncio.run(_run_matrix())
+        except (RuntimeError, ValueError) as exc:
+            console.print(f"[red]{exc}[/red]")
+            raise typer.Exit(code=1) from exc
+
+        any_fail = False
+        for report in matrix_report.reports:
+            console.print(f"\n[bold]{report.mode}[/bold] quality≈{report.quality}")
+            for item in report.results:
+                mark = "[green]PASS[/green]" if item.passed else "[red]FAIL[/red]"
+                console.print(
+                    f"  {mark} {item.task_id}: {item.detail} "
+                    f"({item.latency_ms:.0f}ms {item.provider}/{item.model})"
+                )
+            if report.failed:
+                any_fail = True
+        console.print(
+            f"\n[bold]Matrix[/bold] {matrix_report.passed_providers}/"
+            f"{len(matrix_report.reports)} providers clean"
+        )
+        if any_fail:
+            raise typer.Exit(code=1)
+        return
+
     console.print(
-        f"[bold]CodeHub bench[/bold] mode={'live' if live else 'mock/offline'}"
+        f"[bold]CodeHub bench[/bold] mode={'live' if use_live else 'mock/offline'}"
         + (f" only={','.join(only_ids)}" if only_ids else "")
+        + (f" providers={','.join(provider_ids)}" if provider_ids else "")
     )
     try:
-        report = asyncio.run(_run())
+        report = asyncio.run(_run_single())
     except (RuntimeError, ValueError) as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc

@@ -23,15 +23,21 @@ def create_agent(
     cancel_check: Optional[CancelCheck] = None,
     record_usage: bool = True,
     load_dotenv: bool = True,
+    providers: Optional[list[str]] = None,
 ) -> AgentRuntime:
     if load_dotenv:
         load_env()
 
-    providers = build_providers()
-    if not providers:
+    built = build_providers(only=providers)
+    if not built:
+        if providers:
+            raise RuntimeError(
+                f"No API keys configured for provider(s): {', '.join(providers)}\n"
+                + missing_key_help()
+            )
         raise RuntimeError(missing_key_help())
 
-    router = SmartRouter(providers)
+    router = SmartRouter(built)
     tools = None
     if with_tools:
         root = Path(workspace or Path.cwd()).resolve()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -37,11 +38,16 @@ def configured_provider_names() -> list[str]:
     return [name for name, keys in ENV_KEYS.items() if _has_any_key(keys)]
 
 
-def build_providers(*, include_unconfigured: bool = False) -> list[BaseProvider]:
+def build_providers(
+    *,
+    include_unconfigured: bool = False,
+    only: Optional[list[str]] = None,
+) -> list[BaseProvider]:
     """
     Construct providers that have API keys configured.
 
     Set include_unconfigured=True only for listing metadata in demos.
+    Pass only=["deepseek"] (etc.) to restrict to named providers.
     """
     factories: dict[str, type[BaseProvider]] = {
         "deepseek": DeepSeekProvider,
@@ -49,8 +55,18 @@ def build_providers(*, include_unconfigured: bool = False) -> list[BaseProvider]
         "glm": GLMProvider,
         "kimi": KimiProvider,
     }
+    wanted = {n.strip().lower() for n in only} if only else None
+    if wanted is not None:
+        unknown = wanted - set(factories)
+        if unknown:
+            raise ValueError(
+                f"Unknown provider(s): {sorted(unknown)}. "
+                f"Known: {', '.join(factories)}"
+            )
     providers: list[BaseProvider] = []
     for name, cls in factories.items():
+        if wanted is not None and name not in wanted:
+            continue
         if include_unconfigured or _has_any_key(ENV_KEYS[name]):
             providers.append(cls())  # type: ignore[call-arg]
     return providers

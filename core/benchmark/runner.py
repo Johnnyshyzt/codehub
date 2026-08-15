@@ -69,6 +69,7 @@ async def _run_one(
     *,
     mock: bool,
     max_steps: int = 10,
+    providers: Optional[list[str]] = None,
 ) -> TaskResult:
     with tempfile.TemporaryDirectory(prefix="codehub-bench-") as tmp:
         root = Path(tmp)
@@ -96,6 +97,7 @@ async def _run_one(
                     max_steps=max_steps,
                     with_tools=True,
                     record_usage=False,
+                    providers=providers,
                 )
                 await agent.router.refresh_models()
 
@@ -128,6 +130,7 @@ async def run_benchmark(
     mock: bool = True,
     tasks: Optional[list[BenchTask]] = None,
     only: Optional[list[str]] = None,
+    providers: Optional[list[str]] = None,
     score_store: Optional[ModelScoreStore] = None,
     update_scores: bool = True,
     max_steps: int = 10,
@@ -137,6 +140,7 @@ async def run_benchmark(
 
     mock=True uses scripted MockProvider (CI / offline).
     mock=False uses configured live providers (needs API keys).
+    providers= pin live run to one or more named providers.
     """
     if tasks is not None:
         selected = tasks
@@ -144,15 +148,29 @@ async def run_benchmark(
         selected = default_tasks(only=only)
     if not selected:
         raise ValueError("No benchmark tasks selected")
+    if mock and providers:
+        raise ValueError("providers= is only valid for live bench (mock=False)")
     results: list[TaskResult] = []
     for task in selected:
-        results.append(await _run_one(task, mock=mock, max_steps=max_steps))
+        results.append(
+            await _run_one(
+                task,
+                mock=mock,
+                max_steps=max_steps,
+                providers=providers,
+            )
+        )
 
     passed = sum(1 for r in results if r.passed)
     failed = len(results) - passed
     quality = round(100.0 * passed / len(results), 1) if results else 0.0
+    mode = "mock" if mock else "live"
+    if providers and len(providers) == 1:
+        mode = f"live:{providers[0]}"
+    elif providers:
+        mode = f"live:{'+'.join(providers)}"
     report = BenchReport(
-        mode="mock" if mock else "live",
+        mode=mode,
         passed=passed,
         failed=failed,
         results=results,
@@ -179,3 +197,62 @@ async def run_benchmark(
             score_store.set_quality(primary.provider, primary.model, quality)
 
     return report
+
+
+@dataclass
+class MatrixReport:
+    """Per-provider live bench results."""
+
+    reports: list[BenchReport] = field(default_factory=list)
+
+    @property
+    def providers(self) -> list[str]:
+        return [r.mode.replace("live:", "", 1) for r in self.reports]
+
+    @property
+    def passed_providers(self) -> int:
+        return sum(1 for r in self.reports if r.failed == 0)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "providers": self.providers,
+            "passed_providers": self.passed_providers,
+            "reports": [r.to_dict() for r in self.reports],
+        }
+
+
+async def run_benchmark_matrix(
+    *,
+    only: Optional[list[str]] = None,
+    providers: Optional[list[str]] = None,
+    score_store: Optional[ModelScoreStore] = None,
+    update_scores: bool = True,
+    max_steps: int = 10,
+) -> MatrixReport:
+    """
+    Run the live bench once per configured provider (no cross-provider fallback).
+
+    Useful for comparing DeepSeek / Qwen / GLM / Kimi on the same task corpus.
+    """
+    from core.config import configured_provider_names, load_env
+
+    load_env()
+    names = providers or configured_provider_names()
+    if not names:
+        raise RuntimeError(
+            "No provider API keys found for matrix bench. "
+            "Configure at least one key or pass providers=."
+        )
+
+    reports: list[BenchReport] = []
+    for name in names:
+        report = await run_benchmark(
+            mock=False,
+            only=only,
+            providers=[name],
+            score_store=score_store,
+            update_scores=update_scores,
+            max_steps=max_steps,
+        )
+        reports.append(report)
+    return MatrixReport(reports=reports)
