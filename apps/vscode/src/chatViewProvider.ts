@@ -209,12 +209,53 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async pushStatus(): Promise<void> {
     const healthy = await this.server.isHealthy();
     let providers: string[] = [];
+    let usageLine = "";
+    let mcpLine = "";
+    let scoresLine = "";
     if (healthy) {
       try {
         const h = await this.client.health();
         providers = h.providers || [];
       } catch {
         /* ignore */
+      }
+      try {
+        const usage = await this.client.usage();
+        const totals = usage.totals || {};
+        if ((totals.calls || 0) > 0 || (totals.total_tokens || 0) > 0) {
+          usageLine = `usage: ${totals.calls || 0} calls · ${totals.total_tokens || 0} tokens`;
+        } else {
+          usageLine = "usage: none yet";
+        }
+      } catch {
+        usageLine = "";
+      }
+      try {
+        const mcp = await this.client.mcp();
+        const servers = mcp.servers || [];
+        if (!mcp.sdk_available) {
+          mcpLine = servers.length
+            ? `mcp: ${servers.length} configured (SDK not installed)`
+            : "mcp: none";
+        } else if (!servers.length) {
+          mcpLine = "mcp: none";
+        } else {
+          const toolCount = servers.reduce(
+            (n, s) => n + ((s.tools && s.tools.length) || 0),
+            0
+          );
+          mcpLine = `mcp: ${servers.length} server(s) · ${toolCount} tools`;
+        }
+      } catch {
+        mcpLine = "";
+      }
+      try {
+        const scores = await this.client.scores();
+        const models = scores.models || {};
+        const n = Object.keys(models).length;
+        scoresLine = n ? `scores: ${n} model(s)` : "scores: none yet";
+      } catch {
+        scoresLine = "";
       }
     }
     const extensionKeys = hasAnyApiKeyConfigured();
@@ -227,12 +268,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       guidance =
         "No API keys detected. Open Settings and set a DeepSeek / Qwen / GLM / Kimi key, or add keys to the repo `.env`.";
     }
+    const infoParts = [usageLine, mcpLine, scoresLine].filter(Boolean);
     this.post({
       type: "status",
       healthy,
       hasKeys,
       providers,
       guidance,
+      info: infoParts.join(" · "),
       running: this.client.isRunning,
     });
   }
@@ -437,6 +480,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     #status.ok { color: var(--accent); }
     #status.bad { color: #e36; }
+    #info {
+      margin-top: 4px;
+      font-size: 10px;
+      color: var(--muted);
+      line-height: 1.35;
+      word-break: break-word;
+    }
     #guidance {
       display: none;
       margin-top: 8px;
@@ -587,6 +637,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <h1>CodeHub</h1>
     <p>One Agent. Every Model.</p>
     <div id="status">checking server…</div>
+    <div id="info"></div>
     <div id="guidance"></div>
   </header>
   <div id="log"></div>
@@ -606,6 +657,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const sendBtn = document.getElementById('send');
     const cancelBtn = document.getElementById('cancel');
     const statusEl = document.getElementById('status');
+    const infoEl = document.getElementById('info');
     const guidanceEl = document.getElementById('guidance');
     let streamBubble = null;
 
@@ -786,6 +838,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           statusEl.className = '';
           clearStreamBubble();
           setGuidance('');
+          infoEl.textContent = '';
         } else {
           sendBtn.disabled = false;
           cancelBtn.classList.remove('show');
@@ -801,6 +854,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             statusEl.textContent = 'server offline';
             statusEl.className = 'bad';
           }
+          infoEl.textContent = msg.info || '';
           setGuidance(
             msg.guidance || '',
             !msg.hasKeys,

@@ -43,6 +43,8 @@ After the agent writes files, the Chat panel lists each change with **Diff / Kee
 
 While a run is in progress, use **Cancel** to stop. If the server is offline or no API keys are configured, the panel shows a guidance banner with **Start server** / **Open Settings**.
 
+The header also shows live **usage / mcp / scores** summaries from the local API.
+
 Settings (`codehub.*`):
 
 - `serverUrl` (default `http://127.0.0.1:8765`)

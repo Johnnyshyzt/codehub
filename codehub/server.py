@@ -107,6 +107,13 @@ async def reset_usage() -> Dict[str, Any]:
     return data
 
 
+@app.get("/v1/scores")
+async def get_scores() -> Dict[str, Any]:
+    from core.benchmark import get_score_store
+
+    return get_score_store().summary()
+
+
 @app.get("/v1/mcp")
 async def list_mcp() -> Dict[str, Any]:
     """List configured MCP servers and whether the SDK is available."""

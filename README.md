@@ -19,12 +19,13 @@
 - [x] Tools：`read_file` / `write_file` / `list_dir` / `run_terminal` / `grep` / `search_files`
 - [x] Git 工具：`git_status` / `git_diff` / `git_log` / `git_commit`（需 confirm）
 - [x] 最小 Context Engine（文件树 + 打开文件/选区）
-- [x] CLI：`codehub ask` / `codehub models` / `codehub usage` / `codehub serve`
+- [x] CLI：`codehub ask` / `models` / `usage` / `scores` / `mcp` / `serve`
 - [x] 本地 HTTP API（`/v1/run` + SSE stream + token 事件）
 - [x] VS Code Extension（Chat + Diff + Keep/Revert + 流式 + Cancel + 启动引导）
 - [x] Quota 本地用量（`~/.codehub/usage.json` + `codehub usage` + `/v1/usage`）
 - [x] MCP（选择性：`.codehub/mcp.json` + `codehub mcp` + `pip install 'codehub[mcp]'`）
-- [ ] Benchmark / Router 权重（用用量与评测驱动）
+- [x] Model Score / Benchmark 权重（本地 `model_scores.json` + `codehub scores`）
+- [ ] 更完整的评测套件 / 自动标榜
 
 ---
 
@@ -44,6 +45,21 @@ pip install -e ".[dev]"
 cp .env.example .env
 # 编辑 .env，例如填入 DEEPSEEK_API_KEY=sk-...
 
+# 查看可用模型 / 用量 / 评分
+codehub models
+codehub usage
+codehub scores
+
+# 在当前目录跑一个 coding 任务
+codehub ask "列出这个仓库的顶层结构，并总结 README 在说什么"
+
+# 或跑端到端 demo（会在临时目录写文件并跑 pytest）
+python -m examples.coding_task
+
+# 启动本地 API（给 VS Code 扩展用）
+codehub serve
+```
+
 ### MCP（可选）
 
 ```bash
@@ -56,14 +72,10 @@ codehub mcp          # 列出已配置 server 与可发现 tools
 
 Agent 会把允许的 MCP tools 注册为 `mcp__<server>__<tool>`。
 
-# 在当前目录跑一个 coding 任务
-codehub ask "列出这个仓库的顶层结构，并总结 README 在说什么"
+手动提高某模型的路由权重：
 
-# 或跑端到端 demo（会在临时目录写文件并跑 pytest）
-python -m examples.coding_task
-
-# 启动本地 API（给 VS Code 扩展用）
-codehub serve
+```bash
+codehub scores --set deepseek/deepseek-chat=85
 ```
 
 ### VS Code 扩展
@@ -74,7 +86,7 @@ npm install
 npm run compile
 ```
 
-然后用 Cursor/VS Code 打开本仓库，按 `apps/vscode/README.md` 用 F5 跑扩展，或配置 API Key 后打开侧边栏 **CodeHub** 面板。
+然后用 Cursor/VS Code 打开本仓库，按 `apps/vscode/README.md` 用 F5 跑扩展，或配置 API Key 后打开侧边栏 **CodeHub** 面板。侧边栏会显示 usage / mcp / scores 摘要。
 
 ### 环境变量（BYOK）
 
@@ -124,7 +136,7 @@ codehub/
 **V0.1** — 能用：真实 Provider + Router/Fallback + Agent tools + CLI ✅  
 **V0.1b** — VS Code Extension + local API ✅  
 **V0.2** — Context / Git / Keep-Revert / stream / Cancel / Diff store ✅  
-**V0.3** — Quota ✅ / MCP 选择性 ✅ → Benchmark / Router 权重  
+**V0.3** — Quota ✅ / MCP ✅ / Model Scores ✅ → 更完整评测套件  
 **V1.0** — Developer Platform  
 
 ---

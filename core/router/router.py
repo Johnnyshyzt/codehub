@@ -70,11 +70,29 @@ def _merge_tool_call_delta(
 class SmartRouter:
     """Select a model, then fall back across providers on retryable failures."""
 
-    def __init__(self, providers: list[BaseProvider]):
+    def __init__(
+        self,
+        providers: list[BaseProvider],
+        *,
+        score_store: Any = None,
+        use_scores: bool = True,
+    ):
         self.providers = {p.name: p for p in providers}
         self._model_cache: dict[str, list[ModelInfo]] = {}
         # Preferred provider order for general coding tasks.
         self.default_order = ["deepseek", "qwen", "glm", "kimi"]
+        self.use_scores = use_scores
+        if score_store is not None:
+            self.score_store = score_store
+        elif use_scores:
+            try:
+                from core.benchmark.scores import get_score_store
+
+                self.score_store = get_score_store()
+            except Exception:  # noqa: BLE001
+                self.score_store = None
+        else:
+            self.score_store = None
 
     async def refresh_models(self) -> None:
         for name, provider in self.providers.items():
@@ -126,6 +144,12 @@ class SmartRouter:
 
         if ModelCapability.TOOL_USE in caps:
             score += 1
+
+        if self.use_scores and self.score_store is not None:
+            try:
+                score += int(self.score_store.routing_bonus(model.provider, model.id))
+            except Exception:  # noqa: BLE001
+                pass
 
         return score
 
@@ -199,9 +223,12 @@ class SmartRouter:
         if not decisions:
             raise RuntimeError("No available models from any provider")
 
+        import time
+
         errors: list[str] = []
         for decision in decisions[:max_attempts]:
             attempt = request.model_copy(update={"model": decision.model.id})
+            started = time.monotonic()
             try:
                 if use_stream:
                     response = await self._stream_to_response(
@@ -209,18 +236,44 @@ class SmartRouter:
                     )
                 else:
                     response = await decision.provider.chat_completion(attempt)
+                self._record_outcome(
+                    decision,
+                    success=True,
+                    latency_ms=(time.monotonic() - started) * 1000.0,
+                )
                 return decision, response
             except AuthError as exc:
                 # Bad key for this provider — skip, try others.
+                self._record_outcome(decision, success=False)
                 errors.append(f"{decision.provider.name}: {exc}")
                 continue
             except ProviderError as exc:
+                self._record_outcome(decision, success=False)
                 if exc.retryable:
                     errors.append(f"{decision.provider.name}: {exc}")
                     continue
                 raise
         detail = "; ".join(errors) if errors else "unknown"
         raise RuntimeError(f"All providers failed. Last errors: {detail}")
+
+    def _record_outcome(
+        self,
+        decision: RouteDecision,
+        *,
+        success: bool,
+        latency_ms: float = 0.0,
+    ) -> None:
+        if not self.use_scores or self.score_store is None:
+            return
+        try:
+            self.score_store.record_outcome(
+                decision.provider.name,
+                decision.model.id,
+                success=success,
+                latency_ms=latency_ms,
+            )
+        except Exception:  # noqa: BLE001
+            return
 
     async def _stream_to_response(
         self,

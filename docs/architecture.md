@@ -49,15 +49,16 @@ Developer (CLI / VS Code)
 | Path | Responsibility |
 |------|----------------|
 | `core/context/` | Shallow file tree + editor hints |
+| `core/benchmark/` | Model scores + routing bonus |
 | `core/mcp/` | Selective MCP client (stdio) + tool bridge |
 | `core/quota/` | Local token usage store (`~/.codehub/usage.json`) |
 | `core/tools/` | Sandboxed filesystem, terminal, grep/search, git |
-| `codehub/cli.py` | `ask` / `models` / `usage` / `mcp` / `serve` |
-| `codehub/server.py` | Local HTTP + SSE + `/v1/usage` + `/v1/mcp` |
-| `apps/vscode/` | Chat sidebar + Diff + Keep/Revert + streaming |
+| `codehub/cli.py` | `ask` / `models` / `usage` / `scores` / `mcp` / `serve` |
+| `codehub/server.py` | HTTP + SSE + `/v1/usage` + `/v1/scores` + `/v1/mcp` |
+| `apps/vscode/` | Chat + Diff + Keep/Revert + streaming + status telemetry |
 
 ## Next Steps
 
-1. Benchmark-informed router weights (use local usage + scores)
-2. Show usage / MCP status in VS Code
-3. Keep MCP sessions warm across tool calls (perf)
+1. Richer offline benchmark suite (coding tasks corpus)
+2. Keep MCP sessions warm across tool calls (perf)
+3. Publish VSIX / install docs

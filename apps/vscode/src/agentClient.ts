@@ -123,6 +123,26 @@ export class AgentClient {
     return requestJson("GET", `${this.getBaseUrl()}/health`, undefined, 5_000);
   }
 
+  async usage(): Promise<{
+    totals?: { calls?: number; total_tokens?: number };
+    path?: string;
+  }> {
+    return requestJson("GET", `${this.getBaseUrl()}/v1/usage`, undefined, 5_000);
+  }
+
+  async mcp(): Promise<{
+    sdk_available?: boolean;
+    servers?: Array<{ name: string; tools?: unknown[]; error?: string }>;
+  }> {
+    return requestJson("GET", `${this.getBaseUrl()}/v1/mcp`, undefined, 8_000);
+  }
+
+  async scores(): Promise<{
+    models?: Record<string, { routing_bonus?: number; calls?: number }>;
+  }> {
+    return requestJson("GET", `${this.getBaseUrl()}/v1/scores`, undefined, 5_000);
+  }
+
   cancel(): void {
     const reject = this.activeReject;
     const req = this.activeRequest;

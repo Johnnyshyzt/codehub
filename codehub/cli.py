@@ -104,6 +104,55 @@ def ask_cmd(
         raise typer.Exit(code=1) from exc
 
 
+@app.command("scores")
+def scores_cmd(
+    set_score: Optional[str] = typer.Option(
+        None,
+        "--set",
+        help="Set quality score: provider/model=0-100 (e.g. deepseek/deepseek-chat=85)",
+    ),
+    reset: bool = typer.Option(False, "--reset", help="Clear stored model scores"),
+    path: Optional[Path] = typer.Option(
+        None, "--path", help="Scores JSON path (default: ~/.codehub/model_scores.json)"
+    ),
+) -> None:
+    """Show or update local model scores used by Smart Router."""
+    from core.benchmark import get_score_store
+
+    store = get_score_store(path)
+    if reset:
+        store.reset()
+        console.print(f"[yellow]Scores reset[/yellow] → {store.path}")
+        return
+    if set_score:
+        if "=" not in set_score or "/" not in set_score:
+            console.print("[red]Format: provider/model=score[/red]")
+            raise typer.Exit(code=1)
+        left, raw_score = set_score.rsplit("=", 1)
+        provider, model = left.split("/", 1)
+        entry = store.set_quality(provider.strip(), model.strip(), float(raw_score))
+        console.print(
+            f"[green]Set[/green] {provider}/{model} quality={entry.quality} "
+            f"(routing_bonus=+{entry.routing_bonus()})"
+        )
+        return
+
+    data = store.summary()
+    console.print(f"[bold]Scores file:[/bold] {data['path']}")
+    models = data.get("models") or {}
+    if not models:
+        console.print("No scores yet. They accumulate from live calls, or use --set.")
+        return
+    for key, info in models.items():
+        console.print(
+            f"  {key}: bonus=+{info['routing_bonus']}  "
+            f"quality={info.get('quality')}  "
+            f"calls={info['calls']}  "
+            f"success={info['success_rate']:.0%}  "
+            f"latency≈{info['avg_latency_ms']:.0f}ms"
+        )
+
+
 @app.command("mcp")
 def mcp_cmd(
     workspace: Optional[Path] = typer.Option(
@@ -225,6 +274,7 @@ def main(ctx: typer.Context) -> None:
             "Try: [bold]codehub models[/bold] | "
             "[bold]codehub ask[/bold] | "
             "[bold]codehub usage[/bold] | "
+            "[bold]codehub scores[/bold] | "
             "[bold]codehub mcp[/bold] | "
             "[bold]codehub serve[/bold]"
         )
