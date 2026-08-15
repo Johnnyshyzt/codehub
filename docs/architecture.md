@@ -57,4 +57,4 @@ Developer (CLI / VS Code)
 1. MCP (selective)
 2. Quota / usage telemetry (local)
 3. Benchmark-informed router weights
-4. Stronger streaming UX (cancel mid-run)
+4. Safer large-file Diff (avoid URI query limits)

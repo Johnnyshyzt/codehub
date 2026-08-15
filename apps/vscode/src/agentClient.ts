@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import * as http from "http";
 import * as https from "https";
 import { URL } from "url";
+import { ClientRequest } from "http";
 
 export interface FileChange {
   path: string;
@@ -41,6 +42,13 @@ export interface RunOptions {
   apiKeys: Record<string, string>;
   context?: WorkspaceContextPayload;
   onEvent?: (type: string, payload: Record<string, unknown>) => void;
+}
+
+export class AgentCancelledError extends Error {
+  constructor(message = "Cancelled by user") {
+    super(message);
+    this.name = "AgentCancelledError";
+  }
 }
 
 function requestJson<T>(
@@ -106,10 +114,30 @@ function requestJson<T>(
 }
 
 export class AgentClient {
+  private activeRequest: ClientRequest | undefined;
+  private activeReject: ((err: Error) => void) | undefined;
+
   constructor(private getBaseUrl: () => string) {}
 
   async health(): Promise<{ ok: boolean; providers: string[] }> {
     return requestJson("GET", `${this.getBaseUrl()}/health`, undefined, 5_000);
+  }
+
+  cancel(): void {
+    const reject = this.activeReject;
+    const req = this.activeRequest;
+    this.activeRequest = undefined;
+    this.activeReject = undefined;
+    if (req) {
+      req.destroy();
+    }
+    if (reject) {
+      reject(new AgentCancelledError());
+    }
+  }
+
+  get isRunning(): boolean {
+    return !!this.activeRequest;
   }
 
   async run(options: RunOptions): Promise<RunResult> {
@@ -124,7 +152,10 @@ export class AgentClient {
     // Prefer streaming endpoint; fall back to blocking /v1/run.
     try {
       return await this.runStream(options, body);
-    } catch {
+    } catch (err) {
+      if (err instanceof AgentCancelledError) {
+        throw err;
+      }
       return requestJson<RunResult>("POST", `${this.getBaseUrl()}/v1/run`, body);
     }
   }
@@ -138,6 +169,26 @@ export class AgentClient {
     const payload = JSON.stringify(body);
 
     return new Promise((resolve, reject) => {
+      let settled = false;
+      const settleReject = (err: Error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.activeRequest = undefined;
+        this.activeReject = undefined;
+        reject(err);
+      };
+      const settleResolve = (result: RunResult) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        this.activeRequest = undefined;
+        this.activeReject = undefined;
+        resolve(result);
+      };
+
       const req = lib.request(
         {
           protocol: url.protocol,
@@ -157,7 +208,9 @@ export class AgentClient {
             const chunks: Buffer[] = [];
             res.on("data", (c) => chunks.push(c));
             res.on("end", () => {
-              reject(new Error(Buffer.concat(chunks).toString("utf8") || `HTTP ${res.statusCode}`));
+              settleReject(
+                new Error(Buffer.concat(chunks).toString("utf8") || `HTTP ${res.statusCode}`)
+              );
             });
             return;
           }
@@ -165,7 +218,6 @@ export class AgentClient {
           let buffer = "";
           let eventName = "message";
           let dataLines: string[] = [];
-          let settled = false;
 
           const flush = () => {
             if (!dataLines.length) {
@@ -178,19 +230,18 @@ export class AgentClient {
             try {
               const payloadObj = JSON.parse(data) as Record<string, unknown>;
               if (type === "done") {
-                settled = true;
-                resolve(payloadObj as unknown as RunResult);
+                settleResolve(payloadObj as unknown as RunResult);
               } else if (type === "error") {
-                settled = true;
-                reject(new Error(String(payloadObj.message || "Agent error")));
+                if (payloadObj.cancelled) {
+                  settleReject(new AgentCancelledError(String(payloadObj.message || "Cancelled")));
+                } else {
+                  settleReject(new Error(String(payloadObj.message || "Agent error")));
+                }
               } else {
                 options.onEvent?.(type, payloadObj);
               }
             } catch (err) {
-              if (!settled) {
-                settled = true;
-                reject(err);
-              }
+              settleReject(err instanceof Error ? err : new Error(String(err)));
             }
           };
 
@@ -211,12 +262,28 @@ export class AgentClient {
           res.on("end", () => {
             flush();
             if (!settled) {
-              reject(new Error("Stream ended without result"));
+              settleReject(new Error("Stream ended without result"));
             }
           });
         }
       );
-      req.on("error", reject);
+
+      this.activeRequest = req;
+      this.activeReject = settleReject;
+
+      req.on("error", (err) => {
+        if (settled) {
+          return;
+        }
+        // Destroyed by cancel() often surfaces as an error.
+        if (this.activeReject === settleReject) {
+          settleReject(
+            err.message.includes("socket") || err.message.includes("aborted")
+              ? new AgentCancelledError()
+              : err
+          );
+        }
+      });
       req.write(payload);
       req.end();
     });
@@ -243,4 +310,8 @@ export function collectApiKeys(): Record<string, string> {
     keys.MOONSHOT_API_KEY = kimi;
   }
   return keys;
+}
+
+export function hasAnyApiKeyConfigured(): boolean {
+  return Object.keys(collectApiKeys()).length > 0;
 }

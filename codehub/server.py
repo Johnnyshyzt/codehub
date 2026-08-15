@@ -147,6 +147,7 @@ async def run_agent_stream(body: RunRequest) -> EventSourceResponse:
     load_env()
     workspace = body.workspace or str(Path.cwd())
     queue: asyncio.Queue = asyncio.Queue()
+    cancelled = asyncio.Event()
 
     async def on_event(event_type: str, payload: Dict[str, Any]) -> None:
         await queue.put({"type": event_type, "payload": payload})
@@ -158,6 +159,7 @@ async def run_agent_stream(body: RunRequest) -> EventSourceResponse:
                 max_steps=body.max_steps,
                 with_tools=True,
                 on_event=on_event,
+                cancel_check=cancelled.is_set,
                 load_dotenv=True,
             )
             await agent.router.refresh_models()
@@ -182,8 +184,19 @@ async def run_agent_stream(body: RunRequest) -> EventSourceResponse:
                     },
                 }
             )
+        except asyncio.CancelledError:
+            await queue.put(
+                {"type": "error", "payload": {"message": "Cancelled by user", "cancelled": True}}
+            )
+            raise
         except Exception as exc:  # noqa: BLE001
-            await queue.put({"type": "error", "payload": {"message": str(exc)}})
+            from core.agent.runtime import AgentCancelled
+
+            message = str(exc)
+            payload: Dict[str, Any] = {"message": message}
+            if isinstance(exc, AgentCancelled) or "Cancelled by user" in message:
+                payload["cancelled"] = True
+            await queue.put({"type": "error", "payload": payload})
         finally:
             await queue.put(None)
 
@@ -195,8 +208,18 @@ async def run_agent_stream(body: RunRequest) -> EventSourceResponse:
                 if item is None:
                     break
                 yield {"event": item["type"], "data": json.dumps(item["payload"])}
+        except asyncio.CancelledError:
+            cancelled.set()
+            task.cancel()
+            raise
         finally:
-            await task
+            cancelled.set()
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
 
     return EventSourceResponse(event_generator())
 

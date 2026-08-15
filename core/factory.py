@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from core.agent.runtime import AgentRuntime, EventCallback
+from core.agent.runtime import AgentRuntime, CancelCheck, EventCallback
 from core.config import build_providers, load_env, missing_key_help
 from core.context.workspace import ContextBundle, context_from_payload
 from core.router.router import SmartRouter
@@ -19,6 +19,7 @@ def create_agent(
     max_steps: int = 12,
     with_tools: bool = True,
     on_event: Optional[EventCallback] = None,
+    cancel_check: Optional[CancelCheck] = None,
     load_dotenv: bool = True,
 ) -> AgentRuntime:
     if load_dotenv:
@@ -39,6 +40,7 @@ def create_agent(
         tools=tools,
         max_steps=max_steps,
         on_event=on_event,
+        cancel_check=cancel_check,
     )
 
 

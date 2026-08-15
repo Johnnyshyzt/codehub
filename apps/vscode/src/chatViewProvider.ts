@@ -2,9 +2,11 @@ import * as vscode from "vscode";
 import * as path from "path";
 import {
   AgentClient,
+  AgentCancelledError,
   FileChange,
   WorkspaceContextPayload,
   collectApiKeys,
+  hasAnyApiKeyConfigured,
 } from "./agentClient";
 import { ServerManager } from "./serverManager";
 
@@ -56,11 +58,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this.keepAll();
       } else if (msg.type === "revertAll") {
         await this.revertAll();
+      } else if (msg.type === "cancel") {
+        this.client.cancel();
       } else if (msg.type === "openSettings") {
         await vscode.commands.executeCommand(
           "workbench.action.openSettings",
           "@ext:codehub.codehub"
         );
+      } else if (msg.type === "startServer") {
+        try {
+          await this.server.start();
+          await this.server.ensureRunning();
+          this.post({ type: "event", content: "Local agent server started." });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.post({ type: "error", message });
+        }
+        await this.pushStatus();
       } else if (msg.type === "ready") {
         await this.pushStatus();
       }
@@ -186,7 +200,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private async pushStatus(): Promise<void> {
     const healthy = await this.server.isHealthy();
-    this.post({ type: "status", healthy });
+    let providers: string[] = [];
+    if (healthy) {
+      try {
+        const h = await this.client.health();
+        providers = h.providers || [];
+      } catch {
+        /* ignore */
+      }
+    }
+    const extensionKeys = hasAnyApiKeyConfigured();
+    const hasKeys = extensionKeys || providers.length > 0;
+    let guidance = "";
+    if (!healthy) {
+      guidance =
+        "Server offline. Click “Start server”, or run `codehub serve` in the repo.";
+    } else if (!hasKeys) {
+      guidance =
+        "No API keys detected. Open Settings and set a DeepSeek / Qwen / GLM / Kimi key, or add keys to the repo `.env`.";
+    }
+    this.post({
+      type: "status",
+      healthy,
+      hasKeys,
+      providers,
+      guidance,
+      running: this.client.isRunning,
+    });
   }
 
   private async handlePrompt(prompt: string): Promise<void> {
@@ -201,6 +241,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     try {
       await this.server.ensureRunning();
+
+      // Re-check keys after server is up (server may have .env).
+      let providers: string[] = [];
+      try {
+        providers = (await this.client.health()).providers || [];
+      } catch {
+        /* ignore */
+      }
+      if (!hasAnyApiKeyConfigured() && providers.length === 0) {
+        throw new Error(
+          "No provider API keys found. Open CodeHub Settings and set at least one key " +
+            "(DeepSeek / Qwen / GLM / Kimi), or copy `.env.example` → `.env` in the repo and restart the server."
+        );
+      }
+
       const cfg = vscode.workspace.getConfiguration("codehub");
       const maxSteps = cfg.get<number>("maxSteps") ?? 12;
       const context = this.collectWorkspaceContext(folder.uri.fsPath);
@@ -256,8 +311,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.post({ type: "error", message });
+      if (err instanceof AgentCancelledError) {
+        this.post({ type: "event", content: "⏹ Cancelled." });
+      } else {
+        const message = err instanceof Error ? err.message : String(err);
+        this.post({ type: "error", message });
+      }
     } finally {
       this.post({ type: "status", running: false });
       await this.pushStatus();
@@ -369,6 +428,43 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     #status.ok { color: var(--accent); }
     #status.bad { color: #e36; }
+    #guidance {
+      display: none;
+      margin-top: 8px;
+      padding: 8px;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    #guidance.show { display: block; }
+    #guidance .actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    #guidance button {
+      background: transparent;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 8px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    button.cancel {
+      background: transparent;
+      color: #e36;
+      border: 1px solid #e36;
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font: inherit;
+      display: none;
+    }
+    button.cancel.show { display: inline-block; }
     #log {
       flex: 1;
       overflow: auto;
@@ -482,12 +578,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <h1>CodeHub</h1>
     <p>One Agent. Every Model.</p>
     <div id="status">checking server…</div>
+    <div id="guidance"></div>
   </header>
   <div id="log"></div>
   <form id="form">
     <textarea id="prompt" placeholder="Describe a coding task…"></textarea>
     <div class="row">
       <button class="send" id="send" type="submit">Run Agent</button>
+      <button class="cancel" id="cancel" type="button">Cancel</button>
       <button class="link" id="settings" type="button">Settings</button>
     </div>
   </form>
@@ -497,7 +595,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const form = document.getElementById('form');
     const promptEl = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
+    const cancelBtn = document.getElementById('cancel');
     const statusEl = document.getElementById('status');
+    const guidanceEl = document.getElementById('guidance');
     let streamBubble = null;
 
     function addBubble(cls, text, extra) {
@@ -524,6 +624,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         streamBubble.parentNode.removeChild(streamBubble);
       }
       streamBubble = null;
+    }
+
+    function setGuidance(text, showSettings, showStart) {
+      if (!text) {
+        guidanceEl.className = '';
+        guidanceEl.textContent = '';
+        return;
+      }
+      guidanceEl.className = 'show';
+      guidanceEl.textContent = '';
+      const p = document.createElement('div');
+      p.textContent = text;
+      guidanceEl.appendChild(p);
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      if (showStart) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = 'Start server';
+        b.addEventListener('click', () => vscode.postMessage({ type: 'startServer' }));
+        actions.appendChild(b);
+      }
+      if (showSettings) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = 'Open Settings';
+        b.addEventListener('click', () => vscode.postMessage({ type: 'openSettings' }));
+        actions.appendChild(b);
+      }
+      if (actions.childNodes.length) guidanceEl.appendChild(actions);
     }
 
     function renderChangeRow(c) {
@@ -586,6 +716,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     document.getElementById('settings').addEventListener('click', () => {
       vscode.postMessage({ type: 'openSettings' });
     });
+    cancelBtn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'cancel' });
+    });
 
     window.addEventListener('message', (event) => {
       const msg = event.data;
@@ -639,18 +772,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (msg.type === 'status') {
         if (msg.running) {
           sendBtn.disabled = true;
+          cancelBtn.classList.add('show');
           statusEl.textContent = 'agent running…';
           statusEl.className = '';
           clearStreamBubble();
+          setGuidance('');
         } else {
           sendBtn.disabled = false;
+          cancelBtn.classList.remove('show');
         }
-        if (msg.healthy === true) {
-          statusEl.textContent = 'server connected';
-          statusEl.className = 'ok';
-        } else if (msg.healthy === false) {
-          statusEl.textContent = 'server offline';
-          statusEl.className = 'bad';
+        if (!msg.running) {
+          if (msg.healthy === true) {
+            const providers = (msg.providers || []).join(', ') || 'none';
+            statusEl.textContent = msg.hasKeys
+              ? ('server connected · ' + providers)
+              : 'server connected · no API keys';
+            statusEl.className = msg.hasKeys ? 'ok' : 'bad';
+          } else if (msg.healthy === false) {
+            statusEl.textContent = 'server offline';
+            statusEl.className = 'bad';
+          }
+          setGuidance(
+            msg.guidance || '',
+            !msg.hasKeys,
+            msg.healthy === false
+          );
         }
       }
     });

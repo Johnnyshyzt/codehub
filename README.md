@@ -21,7 +21,7 @@
 - [x] 最小 Context Engine（文件树 + 打开文件/选区）
 - [x] CLI：`codehub ask` / `codehub models` / `codehub serve`
 - [x] 本地 HTTP API（`/v1/run` + SSE stream + token 事件）
-- [x] VS Code Extension（Chat 侧边栏 + Diff + Context + Keep/Revert + 流式输出）
+- [x] VS Code Extension（Chat + Diff + Keep/Revert + 流式 + Cancel + 启动引导）
 - [ ] MCP
 - [ ] Quota Manager / Benchmark
 

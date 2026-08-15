@@ -50,3 +50,27 @@ async def test_agent_tool_loop(tmp_path: Path) -> None:
     assert len(result.file_changes) == 1
     assert result.file_changes[0]["path"] == "note.txt"
     assert result.file_changes[0]["action"] == "created"
+
+
+@pytest.mark.asyncio
+async def test_agent_cancel(tmp_path: Path) -> None:
+    from core.agent.runtime import AgentCancelled
+
+    cancelled = {"flag": False}
+
+    scripted = [
+        ChatCompletionResponse(content="should not finish", finish_reason="stop"),
+    ]
+    provider = MockProvider(scripted_responses=scripted)
+    router = SmartRouter([provider])
+    tools = ToolRegistry(WorkspaceSandbox(tmp_path))
+    # Cancel before first step body runs.
+    cancelled["flag"] = True
+    agent = AgentRuntime(
+        router,
+        tools=tools,
+        max_steps=3,
+        cancel_check=lambda: cancelled["flag"],
+    )
+    with pytest.raises(AgentCancelled):
+        await agent.run("hi", task_type="coding")
