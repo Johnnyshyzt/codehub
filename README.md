@@ -19,11 +19,12 @@
 - [x] Tools：`read_file` / `write_file` / `list_dir` / `run_terminal` / `grep` / `search_files`
 - [x] Git 工具：`git_status` / `git_diff` / `git_log` / `git_commit`（需 confirm）
 - [x] 最小 Context Engine（文件树 + 打开文件/选区）
-- [x] CLI：`codehub ask` / `codehub models` / `codehub serve`
+- [x] CLI：`codehub ask` / `codehub models` / `codehub usage` / `codehub serve`
 - [x] 本地 HTTP API（`/v1/run` + SSE stream + token 事件）
 - [x] VS Code Extension（Chat + Diff + Keep/Revert + 流式 + Cancel + 启动引导）
+- [x] Quota 本地用量（`~/.codehub/usage.json` + `codehub usage` + `/v1/usage`）
 - [ ] MCP
-- [ ] Quota Manager / Benchmark
+- [ ] Benchmark / Router 权重（用用量与评测驱动）
 
 ---
 
@@ -43,8 +44,9 @@ pip install -e ".[dev]"
 cp .env.example .env
 # 编辑 .env，例如填入 DEEPSEEK_API_KEY=sk-...
 
-# 查看可用模型
-codehub models
+# 查看本地 token 用量
+codehub usage
+# codehub usage --reset
 
 # 在当前目录跑一个 coding 任务
 codehub ask "列出这个仓库的顶层结构，并总结 README 在说什么"
@@ -113,8 +115,8 @@ codehub/
 
 **V0.1** — 能用：真实 Provider + Router/Fallback + Agent tools + CLI ✅  
 **V0.1b** — VS Code Extension + local API ✅  
-**V0.2** — Context / grep / Git tools / Keep-Revert / token stream ✅ → 下一步 MCP / Quota  
-**V0.3** — Model Score / Benchmark / Quota  
+**V0.2** — Context / Git / Keep-Revert / stream / Cancel / Diff store ✅  
+**V0.3** — Quota 本地用量 ✅（初版）→ Benchmark / Router 权重 / MCP  
 **V1.0** — Developer Platform  
 
 ---

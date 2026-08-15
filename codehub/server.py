@@ -85,6 +85,28 @@ async def health() -> Dict[str, Any]:
     }
 
 
+@app.get("/v1/usage")
+async def get_usage() -> Dict[str, Any]:
+    """Return local token usage summary (~/.codehub/usage.json)."""
+    from core.quota import get_usage_store
+
+    store = get_usage_store()
+    data = store.summary()
+    data["path"] = str(store.path)
+    return data
+
+
+@app.post("/v1/usage/reset")
+async def reset_usage() -> Dict[str, Any]:
+    from core.quota import get_usage_store
+
+    store = get_usage_store()
+    snap = store.reset()
+    data = snap.to_dict()
+    data["path"] = str(store.path)
+    return data
+
+
 @app.get("/v1/models")
 async def list_models() -> Dict[str, Any]:
     load_env()

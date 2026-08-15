@@ -41,7 +41,7 @@ async def test_agent_tool_loop(tmp_path: Path) -> None:
     provider = MockProvider(scripted_responses=scripted)
     router = SmartRouter([provider])
     tools = ToolRegistry(WorkspaceSandbox(tmp_path))
-    agent = AgentRuntime(router, tools=tools, max_steps=5)
+    agent = AgentRuntime(router, tools=tools, max_steps=5, record_usage=False)
 
     result = await agent.run("create a note", task_type="coding")
     assert result.content == "Created note.txt"
@@ -53,7 +53,26 @@ async def test_agent_tool_loop(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_agent_cancel(tmp_path: Path) -> None:
+async def test_agent_records_usage(tmp_path: Path) -> None:
+    from core.quota.store import UsageStore
+
+    scripted = [
+        ChatCompletionResponse(
+            content="ok",
+            finish_reason="stop",
+            usage={"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5},
+        ),
+    ]
+    provider = MockProvider(scripted_responses=scripted)
+    router = SmartRouter([provider])
+    store = UsageStore(tmp_path / "usage.json")
+    agent = AgentRuntime(router, tools=None, max_steps=2, usage_store=store)
+    result = await agent.run("hi", task_type="coding")
+    assert result.usage_total_tokens == 5
+    snap = store.load()
+    assert snap.totals.total_tokens == 5
+    assert snap.by_provider["mock"].calls == 1
+
     from core.agent.runtime import AgentCancelled
 
     cancelled = {"flag": False}
@@ -71,6 +90,7 @@ async def test_agent_cancel(tmp_path: Path) -> None:
         tools=tools,
         max_steps=3,
         cancel_check=lambda: cancelled["flag"],
+        record_usage=False,
     )
     with pytest.raises(AgentCancelled):
         await agent.run("hi", task_type="coding")

@@ -20,6 +20,7 @@ def create_agent(
     with_tools: bool = True,
     on_event: Optional[EventCallback] = None,
     cancel_check: Optional[CancelCheck] = None,
+    record_usage: bool = True,
     load_dotenv: bool = True,
 ) -> AgentRuntime:
     if load_dotenv:
@@ -41,6 +42,7 @@ def create_agent(
         max_steps=max_steps,
         on_event=on_event,
         cancel_check=cancel_check,
+        record_usage=record_usage,
     )
 
 

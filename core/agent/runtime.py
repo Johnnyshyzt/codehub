@@ -12,6 +12,12 @@ from core.router.router import RouteDecision, SmartRouter
 from core.tools.registry import ToolRegistry
 from providers.base import ChatCompletionRequest, ChatMessage
 
+try:
+    from core.quota.store import UsageStore, get_usage_store
+except ImportError:  # pragma: no cover
+    UsageStore = None  # type: ignore[misc, assignment]
+    get_usage_store = None  # type: ignore[misc, assignment]
+
 EventCallback = Callable[[str, dict[str, Any]], Union[Awaitable[None], None]]
 CancelCheck = Callable[[], bool]
 
@@ -57,6 +63,8 @@ class AgentRuntime:
         max_steps: int = 12,
         on_event: Optional[EventCallback] = None,
         cancel_check: Optional[CancelCheck] = None,
+        usage_store: Optional[Any] = None,
+        record_usage: bool = True,
     ):
         self.router = router
         self.tools = tools
@@ -64,6 +72,13 @@ class AgentRuntime:
         self.on_event = on_event
         self.cancel_check = cancel_check
         self.history: list[ChatMessage] = []
+        self.record_usage = record_usage
+        if usage_store is not None:
+            self.usage_store = usage_store
+        elif record_usage and get_usage_store is not None:
+            self.usage_store = get_usage_store()
+        else:
+            self.usage_store = None
 
     def add_message(self, role: str, content: Optional[str], **kwargs: Any) -> None:
         self.history.append(ChatMessage(role=role, content=content, **kwargs))
@@ -71,6 +86,20 @@ class AgentRuntime:
     def _raise_if_cancelled(self) -> None:
         if self.cancel_check and self.cancel_check():
             raise AgentCancelled("Cancelled by user")
+
+    def _record_usage(self, provider: str, model: str, usage: Optional[dict[str, Any]]) -> None:
+        if not self.record_usage or self.usage_store is None or not usage:
+            return
+        try:
+            self.usage_store.record(
+                provider=provider,
+                model=model,
+                prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                completion_tokens=int(usage.get("completion_tokens") or 0),
+                total_tokens=int(usage.get("total_tokens") or 0),
+            )
+        except Exception:  # noqa: BLE001 — usage must never break the agent
+            return
 
     async def _emit(self, event_type: str, payload: dict[str, Any]) -> None:
         if self.on_event:
@@ -145,6 +174,11 @@ class AgentRuntime:
 
             if response.usage:
                 usage_total += int(response.usage.get("total_tokens") or 0)
+                self._record_usage(
+                    decision.provider.name,
+                    decision.model.id,
+                    response.usage,
+                )
 
             await self._emit(
                 "model_response",
@@ -153,6 +187,7 @@ class AgentRuntime:
                     "provider": decision.provider.name,
                     "model": decision.model.id,
                     "has_tool_calls": bool(response.tool_calls),
+                    "usage": response.usage,
                 },
             )
             events.append(

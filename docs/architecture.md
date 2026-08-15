@@ -47,15 +47,14 @@ Developer (CLI / VS Code)
 | Path | Responsibility |
 |------|----------------|
 | `core/context/` | Shallow file tree + editor hints |
+| `core/quota/` | Local token usage store (`~/.codehub/usage.json`) |
 | `core/tools/` | Sandboxed filesystem, terminal, grep/search, git |
-| `codehub/cli.py` | `codehub ask` / `codehub models` / `codehub serve` |
-| `codehub/server.py` | Local HTTP + SSE (`token` / tool / done) for VS Code |
+| `codehub/cli.py` | `codehub ask` / `models` / `usage` / `serve` |
+| `codehub/server.py` | Local HTTP + SSE (`token` / tool / done) + `/v1/usage` |
 | `apps/vscode/` | Chat sidebar + Diff + Keep/Revert + streaming |
 
 ## Next Steps
 
 1. MCP (selective)
-2. Quota / usage telemetry (local)
-3. Benchmark-informed router weights
-4. (done) Safer large-file Diff via in-memory virtual documents
-5. MCP (selective) / Quota telemetry next
+2. Benchmark-informed router weights (use local usage + scores)
+3. Show usage summary in VS Code status / settings

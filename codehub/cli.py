@@ -100,6 +100,54 @@ def ask_cmd(
         raise typer.Exit(code=1) from exc
 
 
+@app.command("usage")
+def usage_cmd(
+    reset: bool = typer.Option(False, "--reset", help="Clear stored usage counters"),
+    path: Optional[Path] = typer.Option(
+        None, "--path", help="Usage JSON path (default: ~/.codehub/usage.json)"
+    ),
+) -> None:
+    """Show local token usage by provider / model."""
+    from core.quota import get_usage_store
+
+    store = get_usage_store(path)
+    if reset:
+        snap = store.reset()
+        console.print(f"[yellow]Usage reset[/yellow] → {store.path}")
+    else:
+        snap = store.load()
+
+    data = snap.to_dict()
+    totals = data["totals"]
+    console.print(f"[bold]Usage file:[/bold] {store.path}")
+    console.print(
+        f"totals: calls={totals['calls']}  "
+        f"prompt={totals['prompt_tokens']}  "
+        f"completion={totals['completion_tokens']}  "
+        f"total={totals['total_tokens']}"
+    )
+    if data["by_provider"]:
+        console.print("[bold]By provider[/bold]")
+        for name, counters in data["by_provider"].items():
+            console.print(
+                f"  {name}: calls={counters['calls']} total={counters['total_tokens']}"
+            )
+    if data["by_model"]:
+        console.print("[bold]By model[/bold]")
+        for name, counters in data["by_model"].items():
+            console.print(
+                f"  {name}: calls={counters['calls']} total={counters['total_tokens']}"
+            )
+    recent = data.get("recent") or []
+    if recent:
+        console.print("[bold]Recent[/bold] (last 5)")
+        for event in recent[-5:]:
+            console.print(
+                f"  {event['ts']}  {event['provider']}/{event['model']}  "
+                f"+{event['total_tokens']}"
+            )
+
+
 @app.command("serve")
 def serve_cmd(
     host: str = typer.Option("127.0.0.1", "--host"),
@@ -123,7 +171,9 @@ def main(ctx: typer.Context) -> None:
         console.print("CodeHub — One Agent. Every Model.")
         console.print(
             "Try: [bold]codehub models[/bold] | "
-            "[bold]codehub ask[/bold] | [bold]codehub serve[/bold]"
+            "[bold]codehub ask[/bold] | "
+            "[bold]codehub usage[/bold] | "
+            "[bold]codehub serve[/bold]"
         )
 
 
