@@ -35,6 +35,7 @@ Rules:
 - Start with workspace context, then grep/search_files/read_file before editing.
 - Use git_status / git_diff / git_log to understand the repo state; do not invent git history.
 - Only use git_commit when the user clearly asks to commit; pass confirm=true and a clear message.
+- MCP tools (names starting with mcp__) are optional external tools; use them only when relevant.
 - Keep changes minimal and correct.
 - After editing code, run relevant tests or checks when practical.
 - When finished, give a short summary of what you changed.

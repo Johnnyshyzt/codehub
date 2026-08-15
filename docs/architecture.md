@@ -1,4 +1,4 @@
-# CodeHub Architecture (V0.2)
+# CodeHub Architecture (V0.3)
 
 ## High-level Goal
 
@@ -26,11 +26,12 @@ Developer (CLI / VS Code)
         ├── GLM
         └── Kimi
         ↓
-   Tools (workspace sandbox)
+   Tools (workspace sandbox + optional MCP)
         ├── list_dir / read_file / write_file
         ├── grep / search_files
         ├── git_status / git_diff / git_log / git_commit
-        └── run_terminal
+        ├── run_terminal
+        └── mcp__<server>__<tool>   ← selective MCP
 ```
 
 ## Key Design Principles
@@ -41,20 +42,22 @@ Developer (CLI / VS Code)
 4. **Progressive enhancement** — Rule-based router now; score/benchmark-driven router later.
 5. **Git safety** — commit requires `confirm=true`; no amend / push / hook-skip from the tool.
 6. **Streaming** — Router streams completions, Agent emits `token` SSE events for the UI.
+7. **Selective MCP** — Opt-in via `.codehub/mcp.json` + tool allow-list; SDK is an optional extra.
 
 ## Module Map
 
 | Path | Responsibility |
 |------|----------------|
 | `core/context/` | Shallow file tree + editor hints |
+| `core/mcp/` | Selective MCP client (stdio) + tool bridge |
 | `core/quota/` | Local token usage store (`~/.codehub/usage.json`) |
 | `core/tools/` | Sandboxed filesystem, terminal, grep/search, git |
-| `codehub/cli.py` | `codehub ask` / `models` / `usage` / `serve` |
-| `codehub/server.py` | Local HTTP + SSE (`token` / tool / done) + `/v1/usage` |
+| `codehub/cli.py` | `ask` / `models` / `usage` / `mcp` / `serve` |
+| `codehub/server.py` | Local HTTP + SSE + `/v1/usage` + `/v1/mcp` |
 | `apps/vscode/` | Chat sidebar + Diff + Keep/Revert + streaming |
 
 ## Next Steps
 
-1. MCP (selective)
-2. Benchmark-informed router weights (use local usage + scores)
-3. Show usage summary in VS Code status / settings
+1. Benchmark-informed router weights (use local usage + scores)
+2. Show usage / MCP status in VS Code
+3. Keep MCP sessions warm across tool calls (perf)

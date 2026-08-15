@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/path/to/allowed"],
+      "enabled": false,
+      "allow_tools": ["*"]
+    },
+    "echo": {
+      "command": "python",
+      "args": ["-m", "examples.mcp_echo_server"],
+      "enabled": false,
+      "allow_tools": ["echo"]
+    }
+  }
+}

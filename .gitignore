@@ -182,3 +182,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 apps/vscode/out/
+
+# Local CodeHub config (keep examples)
+.codehub/mcp.json
+.codehub/*.local.json

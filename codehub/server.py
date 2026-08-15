@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from core.config import configured_provider_names, load_env, missing_key_help
-from core.factory import build_run_context, create_agent
+from core.factory import attach_configured_mcp, build_run_context, create_agent
 
 
 @asynccontextmanager
@@ -107,6 +107,42 @@ async def reset_usage() -> Dict[str, Any]:
     return data
 
 
+@app.get("/v1/mcp")
+async def list_mcp() -> Dict[str, Any]:
+    """List configured MCP servers and whether the SDK is available."""
+    from core.mcp import load_mcp_config, mcp_sdk_available
+    from core.mcp.client import list_server_tools
+    from core.mcp.config import mcp_tool_name
+
+    workspace = str(Path.cwd())
+    config = load_mcp_config(workspace)
+    sdk = mcp_sdk_available()
+    servers: List[Dict[str, Any]] = []
+    for server in config.enabled_servers:
+        entry: Dict[str, Any] = {
+            "name": server.name,
+            "command": server.command,
+            "args": server.args,
+            "allow_tools": server.allow_tools,
+            "tools": [],
+        }
+        if sdk:
+            try:
+                tools = await list_server_tools(server)
+                entry["tools"] = [
+                    {
+                        "name": t.name,
+                        "openai_name": mcp_tool_name(server.name, t.name),
+                        "description": t.description,
+                    }
+                    for t in tools
+                ]
+            except Exception as exc:  # noqa: BLE001
+                entry["error"] = str(exc)
+        servers.append(entry)
+    return {"sdk_available": sdk, "servers": servers}
+
+
 @app.get("/v1/models")
 async def list_models() -> Dict[str, Any]:
     load_env()
@@ -139,6 +175,7 @@ async def run_agent(body: RunRequest) -> RunResponse:
             with_tools=True,
             load_dotenv=True,
         )
+        await attach_configured_mcp(agent, workspace)
         await agent.router.refresh_models()
         ctx = build_run_context(workspace, body.context)
         result = await agent.run(
@@ -184,6 +221,7 @@ async def run_agent_stream(body: RunRequest) -> EventSourceResponse:
                 cancel_check=cancelled.is_set,
                 load_dotenv=True,
             )
+            await attach_configured_mcp(agent, workspace)
             await agent.router.refresh_models()
             ctx = build_run_context(workspace, body.context)
             result = await agent.run(

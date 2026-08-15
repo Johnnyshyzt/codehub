@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from core.agent.runtime import AgentRuntime, CancelCheck, EventCallback
 from core.config import build_providers, load_env, missing_key_help
 from core.context.workspace import ContextBundle, context_from_payload
+from core.mcp import attach_mcp_tools, load_mcp_config
 from core.router.router import SmartRouter
 from core.tools.filesystem import WorkspaceSandbox
 from core.tools.registry import ToolRegistry
@@ -44,6 +45,17 @@ def create_agent(
         cancel_check=cancel_check,
         record_usage=record_usage,
     )
+
+
+async def attach_configured_mcp(
+    agent: AgentRuntime,
+    workspace: str | Path | None = None,
+) -> List[str]:
+    """Attach selective MCP tools from config (no-op if none / SDK missing)."""
+    if not agent.tools:
+        return []
+    config = load_mcp_config(workspace)
+    return await attach_mcp_tools(agent.tools, config)
 
 
 def build_run_context(

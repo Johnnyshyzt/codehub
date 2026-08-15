@@ -11,7 +11,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from core.config import configured_provider_names, load_env, missing_key_help
-from core.factory import build_run_context, create_agent
+from core.factory import attach_configured_mcp, build_run_context, create_agent
 
 app = typer.Typer(
     name="codehub",
@@ -72,10 +72,14 @@ def ask_cmd(
             with_tools=not no_tools,
             on_event=_print_event,
         )
+        root = workspace or Path.cwd()
+        if not no_tools:
+            mcp_tools = await attach_configured_mcp(agent, root)
+            if mcp_tools:
+                console.print(f"[cyan]MCP tools:[/cyan] {', '.join(mcp_tools)}")
         await agent.router.refresh_models()
         context_text = None
         if not no_tools:
-            root = workspace or Path.cwd()
             context_text = build_run_context(root).render()
         console.print(
             Panel.fit(
@@ -98,6 +102,54 @@ def ask_cmd(
     except RuntimeError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
+
+
+@app.command("mcp")
+def mcp_cmd(
+    workspace: Optional[Path] = typer.Option(
+        None, "--workspace", "-w", help="Workspace root for .codehub/mcp.json"
+    ),
+) -> None:
+    """List configured MCP servers / discoverable tools."""
+    from core.mcp import load_mcp_config, mcp_sdk_available
+    from core.mcp.client import list_server_tools
+    from core.mcp.config import mcp_tool_name
+
+    root = workspace or Path.cwd()
+    config = load_mcp_config(root)
+    if not config.enabled_servers:
+        console.print(
+            "No MCP servers configured.\n"
+            "Create `.codehub/mcp.json` (see `.codehub/mcp.example.json`) "
+            "or set CODEHUB_MCP_CONFIG."
+        )
+        raise typer.Exit(code=0)
+
+    console.print(f"[bold]SDK installed:[/bold] {mcp_sdk_available()}")
+    for server in config.enabled_servers:
+        console.print(
+            f"[bold]{server.name}[/bold]: {server.command} {' '.join(server.args)}"
+        )
+        if not mcp_sdk_available():
+            console.print("  (install mcp: pip install 'codehub[mcp]')")
+            continue
+
+        async def _list(s=server):
+            return await list_server_tools(s)
+
+        try:
+            tools = asyncio.run(_list())
+        except Exception as exc:  # noqa: BLE001
+            console.print(f"  [red]error:[/red] {exc}")
+            continue
+        if not tools:
+            console.print("  (no allow-listed tools)")
+            continue
+        for tool in tools:
+            console.print(
+                f"  - {mcp_tool_name(server.name, tool.name)}  ← {tool.name}: "
+                f"{tool.description[:80]}"
+            )
 
 
 @app.command("usage")
@@ -173,6 +225,7 @@ def main(ctx: typer.Context) -> None:
             "Try: [bold]codehub models[/bold] | "
             "[bold]codehub ask[/bold] | "
             "[bold]codehub usage[/bold] | "
+            "[bold]codehub mcp[/bold] | "
             "[bold]codehub serve[/bold]"
         )
 

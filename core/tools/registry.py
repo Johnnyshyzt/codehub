@@ -267,6 +267,12 @@ class ToolRegistry:
     def register(self, spec: ToolSpec) -> None:
         self._tools[spec.name] = spec
 
+    def has_tool(self, name: str) -> bool:
+        return name in self._tools
+
+    def tool_names(self) -> list[str]:
+        return list(self._tools.keys())
+
     def openai_tools(self) -> list[dict[str, Any]]:
         return [
             {

@@ -23,7 +23,7 @@
 - [x] 本地 HTTP API（`/v1/run` + SSE stream + token 事件）
 - [x] VS Code Extension（Chat + Diff + Keep/Revert + 流式 + Cancel + 启动引导）
 - [x] Quota 本地用量（`~/.codehub/usage.json` + `codehub usage` + `/v1/usage`）
-- [ ] MCP
+- [x] MCP（选择性：`.codehub/mcp.json` + `codehub mcp` + `pip install 'codehub[mcp]'`）
 - [ ] Benchmark / Router 权重（用用量与评测驱动）
 
 ---
@@ -44,9 +44,17 @@ pip install -e ".[dev]"
 cp .env.example .env
 # 编辑 .env，例如填入 DEEPSEEK_API_KEY=sk-...
 
-# 查看本地 token 用量
-codehub usage
-# codehub usage --reset
+### MCP（可选）
+
+```bash
+pip install -e ".[mcp]"
+cp .codehub/mcp.example.json .codehub/mcp.json
+# 编辑 mcp.json：enabled=true，并配置 command/args / allow_tools 白名单
+
+codehub mcp          # 列出已配置 server 与可发现 tools
+```
+
+Agent 会把允许的 MCP tools 注册为 `mcp__<server>__<tool>`。
 
 # 在当前目录跑一个 coding 任务
 codehub ask "列出这个仓库的顶层结构，并总结 README 在说什么"
@@ -116,7 +124,7 @@ codehub/
 **V0.1** — 能用：真实 Provider + Router/Fallback + Agent tools + CLI ✅  
 **V0.1b** — VS Code Extension + local API ✅  
 **V0.2** — Context / Git / Keep-Revert / stream / Cancel / Diff store ✅  
-**V0.3** — Quota 本地用量 ✅（初版）→ Benchmark / Router 权重 / MCP  
+**V0.3** — Quota ✅ / MCP 选择性 ✅ → Benchmark / Router 权重  
 **V1.0** — Developer Platform  
 
 ---
