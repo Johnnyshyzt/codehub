@@ -39,7 +39,7 @@ Commands:
 - `CodeHub: Revert All Changes`
 - `CodeHub: Ask about Selection`
 
-After the agent writes files, the Chat panel lists each change with **Diff / Keep / Revert** (plus Keep all / Revert all). Files are already on disk; **Revert** restores the previous contents (or deletes a newly created file).
+After the agent writes files, the Chat panel lists each change with **Diff / Keep / Revert** (plus Keep all / Revert all). Files are already on disk; **Revert** restores the previous contents (or deletes a newly created file). Diff snapshots are held in memory (not URI query), so large files work.
 
 While a run is in progress, use **Cancel** to stop. If the server is offline or no API keys are configured, the panel shows a guidance banner with **Start server** / **Open Settings**.
 

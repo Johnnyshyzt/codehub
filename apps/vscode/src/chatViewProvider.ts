@@ -8,6 +8,7 @@ import {
   collectApiKeys,
   hasAnyApiKeyConfigured,
 } from "./agentClient";
+import { DiffContentProvider } from "./diffContentProvider";
 import { ServerManager } from "./serverManager";
 
 interface WebviewMessage {
@@ -30,7 +31,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly client: AgentClient,
-    private readonly server: ServerManager
+    private readonly server: ServerManager,
+    private readonly diffProvider: DiffContentProvider
   ) {}
 
   resolveWebviewView(
@@ -102,11 +104,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!folder) {
       return;
     }
-    const before = change.before ?? "";
-    const left = vscode.Uri.parse(
-      `codehub-diff:before/${relativePath}?${encodeURIComponent(before)}`
-    );
-    const right = vscode.Uri.joinPath(folder.uri, relativePath);
+
+    const left = this.diffProvider.setBefore(relativePath, change.before ?? "");
+    const diskUri = vscode.Uri.joinPath(folder.uri, relativePath);
+    let right = diskUri;
+    try {
+      await vscode.workspace.fs.stat(diskUri);
+    } catch {
+      // File missing (e.g. created then reverted) — show in-memory after snapshot.
+      right = this.diffProvider.setAfter(relativePath, change.after ?? "");
+    }
+
     await vscode.commands.executeCommand(
       "vscode.diff",
       left,
@@ -290,6 +298,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ...c,
         decision: "pending" as const,
       }));
+      this.diffProvider.syncFromChanges(this.lastChanges);
       this.post({
         type: "assistant",
         content: result.content,
@@ -805,17 +814,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   </script>
 </body>
 </html>`;
-  }
-}
-
-export class DiffContentProvider implements vscode.TextDocumentContentProvider {
-  provideTextDocumentContent(uri: vscode.Uri): string {
-    // URI: codehub-diff:before/path?urlencodedContent
-    try {
-      return decodeURIComponent(uri.query || "");
-    } catch {
-      return uri.query || "";
-    }
   }
 }
 

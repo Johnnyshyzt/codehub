@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { AgentClient } from "./agentClient";
-import { ChatViewProvider, DiffContentProvider } from "./chatViewProvider";
+import { ChatViewProvider } from "./chatViewProvider";
+import { DiffContentProvider } from "./diffContentProvider";
 import { ServerManager } from "./serverManager";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -11,13 +12,17 @@ export function activate(context: vscode.ExtensionContext): void {
     );
   });
   const server = new ServerManager(context, client);
-  const chat = new ChatViewProvider(context, client, server);
   const diffProvider = new DiffContentProvider();
+  const chat = new ChatViewProvider(context, client, server, diffProvider);
 
   context.subscriptions.push(
     server,
+    diffProvider,
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chat),
-    vscode.workspace.registerTextDocumentContentProvider("codehub-diff", diffProvider),
+    vscode.workspace.registerTextDocumentContentProvider(
+      DiffContentProvider.scheme,
+      diffProvider
+    ),
     vscode.commands.registerCommand("codehub.openChat", async () => {
       await vscode.commands.executeCommand("codehub.chatView.focus");
     }),

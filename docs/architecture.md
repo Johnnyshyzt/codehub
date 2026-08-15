@@ -57,4 +57,5 @@ Developer (CLI / VS Code)
 1. MCP (selective)
 2. Quota / usage telemetry (local)
 3. Benchmark-informed router weights
-4. Safer large-file Diff (avoid URI query limits)
+4. (done) Safer large-file Diff via in-memory virtual documents
+5. MCP (selective) / Quota telemetry next
