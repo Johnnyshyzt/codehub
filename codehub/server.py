@@ -15,7 +15,12 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from core.config import configured_provider_names, load_env, missing_key_help
-from core.factory import attach_configured_mcp, build_run_context, create_agent
+from core.factory import (
+    attach_configured_mcp,
+    build_run_context,
+    close_configured_mcp,
+    create_agent,
+)
 
 
 @asynccontextmanager
@@ -175,6 +180,7 @@ async def run_agent(body: RunRequest) -> RunResponse:
     _apply_api_keys(body.api_keys)
     load_env()
     workspace = body.workspace or str(Path.cwd())
+    agent = None
     try:
         agent = create_agent(
             workspace=workspace,
@@ -194,6 +200,9 @@ async def run_agent(body: RunRequest) -> RunResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    finally:
+        if agent is not None:
+            await close_configured_mcp(agent)
 
     return RunResponse(
         content=result.content,
@@ -219,6 +228,7 @@ async def run_agent_stream(body: RunRequest) -> EventSourceResponse:
         await queue.put({"type": event_type, "payload": payload})
 
     async def runner() -> None:
+        agent = None
         try:
             agent = create_agent(
                 workspace=workspace,
@@ -265,6 +275,8 @@ async def run_agent_stream(body: RunRequest) -> EventSourceResponse:
                 payload["cancelled"] = True
             await queue.put({"type": "error", "payload": payload})
         finally:
+            if agent is not None:
+                await close_configured_mcp(agent)
             await queue.put(None)
 
     async def event_generator() -> AsyncIterator[Dict[str, str]]:

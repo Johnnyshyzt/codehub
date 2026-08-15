@@ -11,7 +11,12 @@ from rich.console import Console
 from rich.panel import Panel
 
 from core.config import configured_provider_names, load_env, missing_key_help
-from core.factory import attach_configured_mcp, build_run_context, create_agent
+from core.factory import (
+    attach_configured_mcp,
+    build_run_context,
+    close_configured_mcp,
+    create_agent,
+)
 
 app = typer.Typer(
     name="codehub",
@@ -73,29 +78,34 @@ def ask_cmd(
             on_event=_print_event,
         )
         root = workspace or Path.cwd()
-        if not no_tools:
-            mcp_tools = await attach_configured_mcp(agent, root)
-            if mcp_tools:
-                console.print(f"[cyan]MCP tools:[/cyan] {', '.join(mcp_tools)}")
-        await agent.router.refresh_models()
-        context_text = None
-        if not no_tools:
-            context_text = build_run_context(root).render()
-        console.print(
-            Panel.fit(
-                prompt,
-                title="CodeHub Task",
-                border_style="green",
+        try:
+            if not no_tools:
+                attached = await attach_configured_mcp(agent, root)
+                if attached.tool_names:
+                    console.print(
+                        f"[cyan]MCP tools:[/cyan] {', '.join(attached.tool_names)}"
+                    )
+            await agent.router.refresh_models()
+            context_text = None
+            if not no_tools:
+                context_text = build_run_context(root).render()
+            console.print(
+                Panel.fit(
+                    prompt,
+                    title="CodeHub Task",
+                    border_style="green",
+                )
             )
-        )
-        result = await agent.run(prompt, task_type=task_type, context_text=context_text)
-        console.print()
-        console.print(
-            f"[bold green]Done[/bold green] via {result.provider}/{result.model} "
-            f"| steps={result.steps} tools={result.tool_calls} "
-            f"tokens≈{result.usage_total_tokens}"
-        )
-        console.print(Panel(result.content or "(empty)", title="Result", border_style="blue"))
+            result = await agent.run(prompt, task_type=task_type, context_text=context_text)
+            console.print()
+            console.print(
+                f"[bold green]Done[/bold green] via {result.provider}/{result.model} "
+                f"| steps={result.steps} tools={result.tool_calls} "
+                f"tokens≈{result.usage_total_tokens}"
+            )
+            console.print(Panel(result.content or "(empty)", title="Result", border_style="blue"))
+        finally:
+            await close_configured_mcp(agent)
 
     try:
         asyncio.run(_run())

@@ -79,3 +79,75 @@ async def test_register_mcp_tools(tmp_path: Path) -> None:
     assert registry.has_tool("mcp__demo__echo")
     schemas = registry.openai_tools()
     assert any(s["function"]["name"] == "mcp__demo__echo" for s in schemas)
+
+
+@pytest.mark.asyncio
+async def test_mcp_session_pool_reuses_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    from core.mcp.client import McpSessionPool
+
+    server = McpServerConfig(name="demo", command="python", args=[], allow_tools=["*"])
+    starts = {"n": 0}
+    calls = {"n": 0}
+
+    class FakeSession:
+        async def list_tools(self):
+            class T:
+                name = "echo"
+                description = "Echo"
+                inputSchema = {"type": "object", "properties": {}}
+
+            class Listed:
+                tools = [T()]
+
+            return Listed()
+
+        async def call_tool(self, name, arguments=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("broken pipe")
+
+            class Block:
+                text = f"ok:{arguments}"
+
+            class Result:
+                content = [Block()]
+                isError = False
+                structuredContent = None
+
+            return Result()
+
+    class FakeWarm:
+        def __init__(self, srv):
+            self.server = srv
+            self.session = None
+            self._stack = object()
+
+        async def start(self):
+            starts["n"] += 1
+            self.session = FakeSession()
+            return self.session
+
+        async def close(self):
+            self.session = None
+
+    monkeypatch.setattr("core.mcp.client.mcp_sdk_available", lambda: True)
+    monkeypatch.setattr("core.mcp.client._WarmSession", FakeWarm)
+
+    pool = McpSessionPool()
+    tools = await pool.list_tools(server)
+    assert len(tools) == 1
+    assert starts["n"] == 1
+
+    # Second list should reuse the warm session.
+    tools2 = await pool.list_tools(server)
+    assert len(tools2) == 1
+    assert starts["n"] == 1
+
+    out = await pool.call_tool(server, "echo", {"message": "hi"})
+    assert out == "ok:{'message': 'hi'}"
+    # First call failed → drop + retry start once more.
+    assert starts["n"] == 2
+    assert calls["n"] == 2
+
+    await pool.aclose()
+    assert pool.open_server_count == 0

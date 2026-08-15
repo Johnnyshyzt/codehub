@@ -43,6 +43,7 @@ Developer (CLI / VS Code)
 5. **Git safety** — commit requires `confirm=true`; no amend / push / hook-skip from the tool.
 6. **Streaming** — Router streams completions, Agent emits `token` SSE events for the UI.
 7. **Selective MCP** — Opt-in via `.codehub/mcp.json` + tool allow-list; SDK is an optional extra.
+   Warm `McpSessionPool` reuses one stdio process per server for the duration of a run.
 
 ## Module Map
 
@@ -60,5 +61,5 @@ Developer (CLI / VS Code)
 ## Next Steps
 
 1. Expand bench corpus / multi-provider live matrix
-2. Keep MCP sessions warm across tool calls (perf)
-3. Publish extension to VS Marketplace / Open VSX
+2. Publish extension to VS Marketplace / Open VSX
+3. Optional: keep MCP pools warm across HTTP requests (not only within a run)

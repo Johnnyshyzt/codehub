@@ -23,7 +23,7 @@
 - [x] 本地 HTTP API（`/v1/run` + SSE stream + token 事件）
 - [x] VS Code Extension（Chat + Diff + Keep/Revert + 流式 + Cancel + 启动引导）
 - [x] Quota 本地用量（`~/.codehub/usage.json` + `codehub usage` + `/v1/usage`）
-- [x] MCP（选择性：`.codehub/mcp.json` + `codehub mcp` + `pip install 'codehub[mcp]'`）
+- [x] MCP（选择性：`.codehub/mcp.json` + 会话复用 + `codehub mcp` + `pip install 'codehub[mcp]'`）
 - [x] Model Score / Benchmark 权重（本地 `model_scores.json` + `codehub scores`）
 - [x] 离线评测套件（`codehub bench` / `codehub bench --live`）
 - [x] VSIX 打包 / 安装文档（`apps/vscode` → `npm run package`）
@@ -73,7 +73,8 @@ cp .codehub/mcp.example.json .codehub/mcp.json
 codehub mcp          # 列出已配置 server 与可发现 tools
 ```
 
-Agent 会把允许的 MCP tools 注册为 `mcp__<server>__<tool>`。
+Agent 会把允许的 MCP tools 注册为 `mcp__<server>__<tool>`。  
+同一次 `ask` / `/v1/run` 内会复用 stdio 会话（warm pool），跑完后关闭。
 
 手动提高某模型的路由权重：
 
