@@ -21,15 +21,23 @@ from core.factory import (
     close_configured_mcp,
     create_agent,
 )
+from core.mcp.client import McpSessionPool
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     load_env()
-    yield
+    # Shared across /v1/run requests so MCP stdio servers stay warm.
+    app.state.mcp_pool = McpSessionPool()
+    try:
+        yield
+    finally:
+        pool = getattr(app.state, "mcp_pool", None)
+        if pool is not None:
+            await pool.aclose()
 
 
-app = FastAPI(title="CodeHub Local Agent", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="CodeHub Local Agent", version="0.3.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -129,6 +137,7 @@ async def list_mcp() -> Dict[str, Any]:
     workspace = str(Path.cwd())
     config = load_mcp_config(workspace)
     sdk = mcp_sdk_available()
+    pool: McpSessionPool = app.state.mcp_pool
     servers: List[Dict[str, Any]] = []
     for server in config.enabled_servers:
         entry: Dict[str, Any] = {
@@ -140,7 +149,7 @@ async def list_mcp() -> Dict[str, Any]:
         }
         if sdk:
             try:
-                tools = await list_server_tools(server)
+                tools = await list_server_tools(server, pool=pool)
                 entry["tools"] = [
                     {
                         "name": t.name,
@@ -152,7 +161,11 @@ async def list_mcp() -> Dict[str, Any]:
             except Exception as exc:  # noqa: BLE001
                 entry["error"] = str(exc)
         servers.append(entry)
-    return {"sdk_available": sdk, "servers": servers}
+    return {
+        "sdk_available": sdk,
+        "warm_sessions": pool.open_server_count,
+        "servers": servers,
+    }
 
 
 @app.get("/v1/models")
@@ -188,7 +201,7 @@ async def run_agent(body: RunRequest) -> RunResponse:
             with_tools=True,
             load_dotenv=True,
         )
-        await attach_configured_mcp(agent, workspace)
+        await attach_configured_mcp(agent, workspace, pool=app.state.mcp_pool)
         await agent.router.refresh_models()
         ctx = build_run_context(workspace, body.context)
         result = await agent.run(
@@ -238,7 +251,7 @@ async def run_agent_stream(body: RunRequest) -> EventSourceResponse:
                 cancel_check=cancelled.is_set,
                 load_dotenv=True,
             )
-            await attach_configured_mcp(agent, workspace)
+            await attach_configured_mcp(agent, workspace, pool=app.state.mcp_pool)
             await agent.router.refresh_models()
             ctx = build_run_context(workspace, body.context)
             result = await agent.run(

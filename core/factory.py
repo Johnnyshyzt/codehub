@@ -9,6 +9,7 @@ from core.agent.runtime import AgentRuntime, CancelCheck, EventCallback
 from core.config import build_providers, load_env, missing_key_help
 from core.context.workspace import ContextBundle, context_from_payload
 from core.mcp import McpAttachResult, attach_mcp_tools, load_mcp_config
+from core.mcp.client import McpSessionPool
 from core.router.router import SmartRouter
 from core.tools.filesystem import WorkspaceSandbox
 from core.tools.registry import ToolRegistry
@@ -56,13 +57,20 @@ def create_agent(
 async def attach_configured_mcp(
     agent: AgentRuntime,
     workspace: str | Path | None = None,
+    *,
+    pool: Optional[McpSessionPool] = None,
 ) -> McpAttachResult:
-    """Attach selective MCP tools from config (no-op if none / SDK missing)."""
+    """
+    Attach selective MCP tools from config (no-op if none / SDK missing).
+
+    Pass a shared ``pool`` (e.g. FastAPI app lifespan) to reuse stdio sessions
+    across HTTP requests. Owned per-run pools are stored on ``agent.mcp_pool``.
+    """
     if not agent.tools:
         return McpAttachResult()
     config = load_mcp_config(workspace)
-    attached = await attach_mcp_tools(agent.tools, config)
-    # Keep pool on the agent so callers can close after the run.
+    attached = await attach_mcp_tools(agent.tools, config, pool=pool)
+    # Only set when we own the pool; shared pools are closed by the server.
     agent.mcp_pool = attached.pool  # type: ignore[attr-defined]
     return attached
 

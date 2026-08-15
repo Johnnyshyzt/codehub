@@ -11,7 +11,7 @@
 
 ## 当前状态
 
-**Phase B+ / Git tools**
+**当前状态：V0.3（本地完成，暂不发布）**
 
 - [x] OpenAI-compatible Provider（DeepSeek / Qwen / GLM / Kimi）
 - [x] Smart Router + 自动 Fallback（429 / 5xx / timeout）
@@ -79,7 +79,7 @@ codehub mcp          # 列出已配置 server 与可发现 tools
 ```
 
 Agent 会把允许的 MCP tools 注册为 `mcp__<server>__<tool>`。  
-同一次 `ask` / `/v1/run` 内会复用 stdio 会话（warm pool），跑完后关闭。
+同一次 `ask` 内复用 stdio 会话；`codehub serve` 在进程生命周期内跨 HTTP 请求复用（warm pool）。
 
 手动提高某模型的路由权重：
 

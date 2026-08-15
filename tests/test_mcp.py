@@ -82,6 +82,42 @@ async def test_register_mcp_tools(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_attach_shared_pool_not_owned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from core.mcp.bridge import attach_mcp_tools
+    from core.mcp.client import McpSessionPool
+    from core.mcp.config import McpConfig
+
+    server = McpServerConfig(name="demo", command="python", args=[], allow_tools=["*"])
+    config = McpConfig(servers=[server])
+    shared = McpSessionPool()
+
+    async def fake_discover(cfg, *, pool=None):
+        assert pool is shared
+        return [
+            (
+                server,
+                McpToolInfo(
+                    server="demo",
+                    name="echo",
+                    description="Echo",
+                    input_schema={"type": "object", "properties": {}},
+                ),
+            )
+        ]
+
+    monkeypatch.setattr("core.mcp.bridge.mcp_sdk_available", lambda: True)
+    monkeypatch.setattr("core.mcp.bridge.discover_mcp_tools", fake_discover)
+
+    registry = ToolRegistry(WorkspaceSandbox(tmp_path))
+    attached = await attach_mcp_tools(registry, config, pool=shared)
+    assert attached.tool_names == ["mcp__demo__echo"]
+    assert attached.pool is None  # shared → caller does not own/close
+    await shared.aclose()
+
+
+@pytest.mark.asyncio
 async def test_mcp_session_pool_reuses_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     from core.mcp.client import McpSessionPool
 

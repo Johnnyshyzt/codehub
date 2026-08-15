@@ -101,21 +101,35 @@ def register_mcp_tools(
 async def attach_mcp_tools(
     registry: ToolRegistry,
     config: Optional[McpConfig] = None,
+    *,
+    pool: Optional[McpSessionPool] = None,
 ) -> McpAttachResult:
-    """Discover + register MCP tools with a warm session pool when possible."""
+    """
+    Discover + register MCP tools.
+
+    If ``pool`` is provided, sessions stay in that shared pool and the result
+    does not own/close it (suitable for long-lived HTTP servers).
+    Otherwise a per-run pool is created and returned for the caller to close.
+    """
     if config is None or not config.enabled_servers:
         return McpAttachResult()
     if not mcp_sdk_available():
         return McpAttachResult()
 
-    pool = McpSessionPool()
+    owns_pool = pool is None
+    active = pool if pool is not None else McpSessionPool()
     try:
-        discovered = await discover_mcp_tools(config, pool=pool)
-        names = register_mcp_tools(registry, discovered, pool=pool)
+        discovered = await discover_mcp_tools(config, pool=active)
+        names = register_mcp_tools(registry, discovered, pool=active)
         if not names:
-            await pool.aclose()
+            if owns_pool:
+                await active.aclose()
             return McpAttachResult(tool_names=[], pool=None)
-        return McpAttachResult(tool_names=names, pool=pool)
+        return McpAttachResult(
+            tool_names=names,
+            pool=active if owns_pool else None,
+        )
     except Exception:
-        await pool.aclose()
+        if owns_pool:
+            await active.aclose()
         raise
