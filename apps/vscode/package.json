@@ -2,8 +2,17 @@
   "name": "codehub",
   "displayName": "CodeHub",
   "description": "One Agent. Every Model. — Open-source multi-model AI coding agent",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "publisher": "codehub",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Johnnyshyzt/codehub.git"
+  },
+  "homepage": "https://github.com/Johnnyshyzt/codehub",
+  "bugs": {
+    "url": "https://github.com/Johnnyshyzt/codehub/issues"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -133,11 +142,14 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "lint": "tsc --noEmit -p ./"
+    "lint": "tsc --noEmit -p ./",
+    "package": "vsce package --no-dependencies",
+    "package:list": "vsce ls --no-dependencies"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
     "typescript": "^5.3.3"
   }
 }

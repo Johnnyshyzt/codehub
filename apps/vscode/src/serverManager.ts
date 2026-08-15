@@ -49,22 +49,30 @@ export class ServerManager implements vscode.Disposable {
     }
     const python = this.resolvePython();
     const repoRoot = this.resolveRepoRoot();
+    const monorepo = this.isCodehubMonorepo(repoRoot);
+    const cwd =
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || repoRoot;
     const url = vscode.workspace.getConfiguration("codehub").get<string>("serverUrl") ||
       "http://127.0.0.1:8765";
     const port = new URL(url).port || "8765";
 
     this.output.appendLine(`Starting CodeHub server with: ${python}`);
-    this.output.appendLine(`Repo root: ${repoRoot}`);
+    this.output.appendLine(`Working directory: ${cwd}`);
+    if (monorepo) {
+      this.output.appendLine(`Monorepo PYTHONPATH: ${repoRoot}`);
+    }
+
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    if (monorepo) {
+      env.PYTHONPATH = repoRoot;
+    }
 
     this.process = spawn(
       python,
       ["-m", "uvicorn", "codehub.server:app", "--host", "127.0.0.1", "--port", port],
       {
-        cwd: repoRoot,
-        env: {
-          ...process.env,
-          PYTHONPATH: repoRoot,
-        },
+        cwd,
+        env,
       }
     );
 
@@ -108,13 +116,17 @@ export class ServerManager implements vscode.Disposable {
     if (configured) {
       return configured;
     }
-    const repoRoot = this.resolveRepoRoot();
-    const candidates = [
-      path.join(repoRoot, ".venv", "bin", "python"),
-      path.join(repoRoot, ".venv", "Scripts", "python.exe"),
-      "python3",
-      "python",
-    ];
+    const roots = new Set<string>();
+    roots.add(this.resolveRepoRoot());
+    for (const folder of vscode.workspace.workspaceFolders || []) {
+      roots.add(folder.uri.fsPath);
+    }
+    const candidates: string[] = [];
+    for (const root of roots) {
+      candidates.push(path.join(root, ".venv", "bin", "python"));
+      candidates.push(path.join(root, ".venv", "Scripts", "python.exe"));
+    }
+    candidates.push("python3", "python");
     for (const c of candidates) {
       if (c === "python3" || c === "python") {
         return c;
@@ -126,22 +138,30 @@ export class ServerManager implements vscode.Disposable {
     return "python3";
   }
 
+  private isCodehubMonorepo(root: string): boolean {
+    const pyproject = path.join(root, "pyproject.toml");
+    if (!fs.existsSync(pyproject)) {
+      return false;
+    }
+    try {
+      return fs.readFileSync(pyproject, "utf8").includes('name = "codehub"');
+    } catch {
+      return false;
+    }
+  }
+
   private resolveRepoRoot(): string {
     // Prefer workspace folder that contains pyproject with name codehub.
     const folders = vscode.workspace.workspaceFolders || [];
     for (const folder of folders) {
-      const pyproject = path.join(folder.uri.fsPath, "pyproject.toml");
-      if (fs.existsSync(pyproject)) {
-        const text = fs.readFileSync(pyproject, "utf8");
-        if (text.includes('name = "codehub"')) {
-          return folder.uri.fsPath;
-        }
+      if (this.isCodehubMonorepo(folder.uri.fsPath)) {
+        return folder.uri.fsPath;
       }
     }
-    // Extension may live at apps/vscode inside the monorepo.
+    // Extension may live at apps/vscode inside the monorepo (F5 / symlink).
     const extRoot = this.context.extensionPath;
     const maybeRoot = path.resolve(extRoot, "..", "..");
-    if (fs.existsSync(path.join(maybeRoot, "pyproject.toml"))) {
+    if (this.isCodehubMonorepo(maybeRoot)) {
       return maybeRoot;
     }
     if (folders[0]) {

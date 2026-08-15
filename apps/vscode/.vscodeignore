@@ -3,7 +3,11 @@
 node_modules/**
 src/**
 .gitignore
+.gitkeep
 tsconfig.json
 **/*.ts
 !**/*.d.ts
 **/*.map
+**/*.vsix
+package-lock.json
+.npmrc

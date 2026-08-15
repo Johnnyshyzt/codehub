@@ -61,4 +61,4 @@ Developer (CLI / VS Code)
 
 1. Expand bench corpus / multi-provider live matrix
 2. Keep MCP sessions warm across tool calls (perf)
-3. Publish VSIX / install docs
+3. Publish extension to VS Marketplace / Open VSX

@@ -26,7 +26,7 @@
 - [x] MCP（选择性：`.codehub/mcp.json` + `codehub mcp` + `pip install 'codehub[mcp]'`）
 - [x] Model Score / Benchmark 权重（本地 `model_scores.json` + `codehub scores`）
 - [x] 离线评测套件（`codehub bench` / `codehub bench --live`）
-- [ ] VSIX 打包 / 安装文档
+- [x] VSIX 打包 / 安装文档（`apps/vscode` → `npm run package`）
 
 ---
 
@@ -83,13 +83,28 @@ codehub scores --set deepseek/deepseek-chat=85
 
 ### VS Code 扩展
 
+**从 VSIX 安装（当前推荐）**
+
+```bash
+cd apps/vscode
+npm install
+npm run package          # → codehub-0.3.0.vsix
+```
+
+然后在 VS Code / Cursor：Command Palette → **Extensions: Install from VSIX…**，选中生成的 `.vsix`。  
+也可：`code --install-extension apps/vscode/codehub-0.3.0.vsix`
+
+安装后请保证本机已 `pip install -e .`（或可用的 `codehub` 环境），并在设置里按需填写 `codehub.pythonPath` / API Key。详见 [`apps/vscode/README.md`](apps/vscode/README.md)。
+
+**开发调试（F5）**
+
 ```bash
 cd apps/vscode
 npm install
 npm run compile
 ```
 
-然后用 Cursor/VS Code 打开本仓库，按 `apps/vscode/README.md` 用 F5 跑扩展，或配置 API Key 后打开侧边栏 **CodeHub** 面板。侧边栏会显示 usage / mcp / scores 摘要。
+用 Cursor/VS Code 打开本仓库，按 `apps/vscode/README.md` 用 F5 跑扩展。侧边栏 **CodeHub** 面板会显示 usage / mcp / scores 摘要。
 
 ### 环境变量（BYOK）
 
@@ -139,7 +154,7 @@ codehub/
 **V0.1** — 能用：真实 Provider + Router/Fallback + Agent tools + CLI ✅  
 **V0.1b** — VS Code Extension + local API ✅  
 **V0.2** — Context / Git / Keep-Revert / stream / Cancel / Diff store ✅  
-**V0.3** — Quota ✅ / MCP ✅ / Scores ✅ / Bench ✅ → VSIX / 更大评测集  
+**V0.3** — Quota ✅ / MCP ✅ / Scores ✅ / Bench ✅ / VSIX ✅ → Marketplace / 更大评测集  
 **V1.0** — Developer Platform  
 
 ---
