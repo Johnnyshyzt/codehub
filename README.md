@@ -19,13 +19,14 @@
 - [x] Tools：`read_file` / `write_file` / `list_dir` / `run_terminal` / `grep` / `search_files`
 - [x] Git 工具：`git_status` / `git_diff` / `git_log` / `git_commit`（需 confirm）
 - [x] 最小 Context Engine（文件树 + 打开文件/选区）
-- [x] CLI：`codehub ask` / `models` / `usage` / `scores` / `mcp` / `serve`
+- [x] CLI：`codehub ask` / `models` / `usage` / `scores` / `bench` / `mcp` / `serve`
 - [x] 本地 HTTP API（`/v1/run` + SSE stream + token 事件）
 - [x] VS Code Extension（Chat + Diff + Keep/Revert + 流式 + Cancel + 启动引导）
 - [x] Quota 本地用量（`~/.codehub/usage.json` + `codehub usage` + `/v1/usage`）
 - [x] MCP（选择性：`.codehub/mcp.json` + `codehub mcp` + `pip install 'codehub[mcp]'`）
 - [x] Model Score / Benchmark 权重（本地 `model_scores.json` + `codehub scores`）
-- [ ] 更完整的评测套件 / 自动标榜
+- [x] 离线评测套件（`codehub bench` / `codehub bench --live`）
+- [ ] VSIX 打包 / 安装文档
 
 ---
 
@@ -49,6 +50,8 @@ cp .env.example .env
 codehub models
 codehub usage
 codehub scores
+codehub bench          # offline mock suite
+# codehub bench --live # needs API keys; updates model_scores
 
 # 在当前目录跑一个 coding 任务
 codehub ask "列出这个仓库的顶层结构，并总结 README 在说什么"
@@ -136,7 +139,7 @@ codehub/
 **V0.1** — 能用：真实 Provider + Router/Fallback + Agent tools + CLI ✅  
 **V0.1b** — VS Code Extension + local API ✅  
 **V0.2** — Context / Git / Keep-Revert / stream / Cancel / Diff store ✅  
-**V0.3** — Quota ✅ / MCP ✅ / Model Scores ✅ → 更完整评测套件  
+**V0.3** — Quota ✅ / MCP ✅ / Scores ✅ / Bench ✅ → VSIX / 更大评测集  
 **V1.0** — Developer Platform  
 
 ---

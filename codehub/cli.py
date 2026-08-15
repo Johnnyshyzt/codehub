@@ -104,6 +104,53 @@ def ask_cmd(
         raise typer.Exit(code=1) from exc
 
 
+@app.command("bench")
+def bench_cmd(
+    live: bool = typer.Option(
+        False,
+        "--live",
+        help="Use configured live providers (needs API keys). Default is mock/offline.",
+    ),
+    update_scores: bool = typer.Option(
+        True,
+        "--update-scores/--no-update-scores",
+        help="Write outcomes into local model_scores.json (live mode).",
+    ),
+    max_steps: int = typer.Option(10, "--max-steps"),
+) -> None:
+    """Run the built-in coding benchmark suite."""
+    from core.benchmark import run_benchmark
+
+    async def _run():
+        return await run_benchmark(
+            mock=not live,
+            update_scores=update_scores and live,
+            max_steps=max_steps,
+        )
+
+    console.print(
+        f"[bold]CodeHub bench[/bold] mode={'live' if live else 'mock/offline'}"
+    )
+    try:
+        report = asyncio.run(_run())
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    for item in report.results:
+        mark = "[green]PASS[/green]" if item.passed else "[red]FAIL[/red]"
+        console.print(
+            f"  {mark} {item.task_id}: {item.detail} "
+            f"({item.latency_ms:.0f}ms steps={item.steps} tools={item.tool_calls})"
+        )
+    console.print(
+        f"\n[bold]Result[/bold] {report.passed}/{report.total} passed "
+        f"({report.pass_rate:.0%}) quality≈{report.quality}"
+    )
+    if report.failed:
+        raise typer.Exit(code=1)
+
+
 @app.command("scores")
 def scores_cmd(
     set_score: Optional[str] = typer.Option(
@@ -274,6 +321,7 @@ def main(ctx: typer.Context) -> None:
             "Try: [bold]codehub models[/bold] | "
             "[bold]codehub ask[/bold] | "
             "[bold]codehub usage[/bold] | "
+            "[bold]codehub bench[/bold] | "
             "[bold]codehub scores[/bold] | "
             "[bold]codehub mcp[/bold] | "
             "[bold]codehub serve[/bold]"

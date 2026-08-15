@@ -49,16 +49,16 @@ Developer (CLI / VS Code)
 | Path | Responsibility |
 |------|----------------|
 | `core/context/` | Shallow file tree + editor hints |
-| `core/benchmark/` | Model scores + routing bonus |
+| `core/benchmark/` | Model scores + offline/live bench suite |
 | `core/mcp/` | Selective MCP client (stdio) + tool bridge |
 | `core/quota/` | Local token usage store (`~/.codehub/usage.json`) |
 | `core/tools/` | Sandboxed filesystem, terminal, grep/search, git |
-| `codehub/cli.py` | `ask` / `models` / `usage` / `scores` / `mcp` / `serve` |
+| `codehub/cli.py` | `ask` / `models` / `usage` / `scores` / `bench` / `mcp` / `serve` |
 | `codehub/server.py` | HTTP + SSE + `/v1/usage` + `/v1/scores` + `/v1/mcp` |
 | `apps/vscode/` | Chat + Diff + Keep/Revert + streaming + status telemetry |
 
 ## Next Steps
 
-1. Richer offline benchmark suite (coding tasks corpus)
+1. Expand bench corpus / multi-provider live matrix
 2. Keep MCP sessions warm across tool calls (perf)
 3. Publish VSIX / install docs
